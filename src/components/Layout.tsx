@@ -3,12 +3,12 @@ import background from '../assets/image 1.png';
 
 import styles from './Layout.module.scss';
 
-interface NavProps {
+interface LayoutProps {
   className?: string;
   children: React.ReactNode;
 }
 
-const Layout = (props: NavProps) => {
+const Layout = (props: LayoutProps) => {
   return (
     <div>
       <div className={`${props.className} ${styles.container}`}>

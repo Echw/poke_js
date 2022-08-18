@@ -1,12 +1,17 @@
 import React from 'react';
-import styles from './OnePokemonList.module.scss';
+import { Pokemon } from '../lib/context';
 
-const OnePokemonList = () => {
+import styles from './OnePokemonList.module.scss';
+interface PokemonProps {
+  pokemon: Pokemon;
+}
+
+const OnePokemonList = (props: PokemonProps) => {
   return (
     <div className={styles.box}>
-      <img src="" alt="" />
-      <h4>Bulbasaur</h4>
-      <p>#001</p>
+      <img src={props.pokemon.sprites.front_default} alt="" />
+      <h4>{props.pokemon.name}</h4>
+      <p>{props.pokemon.nat_dex_num}</p>
     </div>
   );
 };

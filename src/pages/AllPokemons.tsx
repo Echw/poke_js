@@ -3,8 +3,11 @@ import Layout from '../components/Layout';
 import Nav from '../components/Nav';
 import OnePokemonList from '../components/OnePokemonList';
 import styles from './AllPokemons.module.scss';
+import { usePokemonContext } from '../lib/context';
 
 const AllPokemons = () => {
+  const { allPokemons } = usePokemonContext();
+
   return (
     <Layout>
       <Nav />
@@ -12,12 +15,9 @@ const AllPokemons = () => {
         <div className={styles.insideContainer}>
           <h2>All Pokemons</h2>
           <div className={styles.itemsContainer}>
-            <OnePokemonList />
-            <OnePokemonList />
-            <OnePokemonList />
-            <OnePokemonList />
-            <OnePokemonList />
-            <OnePokemonList />
+            {allPokemons.map((pokemon) => (
+              <OnePokemonList pokemon={pokemon} />
+            ))}
           </div>
         </div>
       </div>
