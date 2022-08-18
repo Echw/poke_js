@@ -1,0 +1,19 @@
+.container {
+  z-index: 100;
+  // height: 70vh;
+  border-radius: 0 0 4rem 4rem;
+  background-color: white;
+  box-shadow: 2px 3px 5px rgba(0, 0, 0, 0.15);
+  padding-bottom: 5rem;
+}
+
+.img {
+  position: relative;
+  width: 100%;
+  z-index: -5000;
+  top: 0;
+  background-position: top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  margin-top: -20%;
+}
