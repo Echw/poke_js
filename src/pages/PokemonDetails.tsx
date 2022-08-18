@@ -5,15 +5,13 @@ import './PokemonDetails';
 import styles from './PokemonDetails.module.scss';
 import { FaWeight } from 'react-icons/fa';
 import { FaRulerCombined } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
 
 const PokemonDetails = () => {
   return (
     <Layout>
       <Nav />
       <div className={styles.container}>
-        <div className={styles.backBtn}>
-          <button>Back to Search</button>
-        </div>
         <div className={styles.title}>
           <h1>Bulbasaur</h1>
           <h3>#001</h3>
@@ -25,7 +23,9 @@ const PokemonDetails = () => {
               <p>Grass</p>
               <p>Poison</p>{' '}
             </div>
-            <button className={styles.save}>Add to Pokedex</button>
+            <Link className={styles.link} to="/addtopokedex">
+              <button className={styles.save}>Add to Pokedex</button>
+            </Link>
           </div>
           <div className={styles.about}>
             <h2>About</h2>

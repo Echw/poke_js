@@ -1,0 +1,27 @@
+.allContainer {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 5rem;
+
+  .insideContainer {
+    width: 70%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #ffffff;
+    box-shadow: 0px 32px 48px rgba(0, 0, 0, 0.1);
+    border-radius: 32px;
+  }
+}
+
+.itemsContainer {
+  width: 90%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  padding: 1rem;
+  gap: 1rem;
+}

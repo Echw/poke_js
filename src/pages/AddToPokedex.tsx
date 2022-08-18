@@ -8,9 +8,6 @@ const AddToPokedex = () => {
     <Layout>
       <Nav />
       <div className={styles.container}>
-        <div className={styles.backBtn}>
-          <button>Back to Search</button>
-        </div>
         <div className={styles.title}>
           <h1>Bulbasaur</h1>
           <h3>#001</h3>

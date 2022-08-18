@@ -1,5 +1,6 @@
 import React from 'react';
 import { AiOutlineSearch } from 'react-icons/ai';
+import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Nav from '../components/Nav';
 
@@ -19,14 +20,17 @@ const Home = () => {
             </button>
           </div>
         </div>
+
         <div className={styles.allbutton}>
-          <button className={styles.button}>
-            <p>I Generation</p>
-            <div>
-              <i></i> <i></i> <i></i>
-            </div>
-            <p>See All</p>
-          </button>
+          <Link className={styles.link} to="/list">
+            <button className={styles.button}>
+              <p>I Generation</p>
+              <div>
+                <i></i> <i></i> <i></i>
+              </div>
+              <p>See All</p>
+            </button>
+          </Link>
         </div>
       </Layout>
     </div>
