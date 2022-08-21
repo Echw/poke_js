@@ -36,6 +36,21 @@ export const GET_GEN1_POKEMONS = gql`
       }
       color
       nat_dex_num
+      evolution_chain_start {
+        sprites {
+          front_default
+        }
+        evolves_to {
+          sprites {
+            front_default
+          }
+          evolves_to {
+            sprites {
+              front_default
+            }
+          }
+        }
+      }
     }
   }
 `;

@@ -29,6 +29,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  text-transform: capitalize;
 }
 h1 {
   margin: 0;
@@ -43,12 +44,14 @@ h1 {
 }
 
 .types {
+  margin-top: 1rem;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   .typeInfo {
     display: flex;
+    flex-direction: row;
     gap: 1rem;
     p {
       padding: 0.5rem 1rem;
@@ -70,8 +73,7 @@ h1 {
   border-radius: 1rem;
   border: none;
   cursor: pointer;
-  position: absolute;
-  right: 20%;
+  margin-top: 1rem;
 }
 
 .about {

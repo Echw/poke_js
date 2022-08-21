@@ -16,8 +16,8 @@ export type Pokemon = {
   color: string;
   nat_dex_num: number;
   sprites: { front_default: string };
-  types: { name: string };
-  moves: { name: string };
+  types: { name: string }[];
+  moves: { name: string }[];
   base_stats: {
     hp: number;
     attack: number;
@@ -26,8 +26,13 @@ export type Pokemon = {
     special_defense: number;
     speed: number;
   };
-  evolves_to: { sprites: { front_default: string } };
-  evolves_from: { sprites: { front_default: string } };
+  evolution_chain_start: {
+    sprites: { front_default: string };
+    evolves_to: {
+      sprites: { front_default: string };
+      evolves_to: { sprites: { front_default: string } }[];
+    }[];
+  };
 };
 
 export const PokemonContextProvider = (props: ProviderProps) => {

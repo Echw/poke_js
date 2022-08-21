@@ -4,15 +4,20 @@ import { Link, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Nav from '../components/Nav';
 import styles from './Home.module.scss';
-import { usePokemonContext } from '../lib/context';
+import { Pokemon, usePokemonContext } from '../lib/context';
 
 const Home = () => {
   const [enteredSearch, setEnteredSearch] = useState('');
+  const [filteredSearch, setFilteredSearch] = useState<Pokemon[]>([]);
   const navigation = useNavigate();
   const { allPokemons } = usePokemonContext();
 
   const searchChangeHandler = (event: React.ChangeEvent<HTMLInputElement>) => {
     setEnteredSearch(event.target.value);
+    const newFilter = allPokemons.filter((name) => {
+      return name.name.includes(event.target.value);
+    });
+    setFilteredSearch(newFilter);
   };
 
   const onSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -42,6 +47,23 @@ const Home = () => {
               <AiOutlineSearch />
             </button>
           </form>
+          {enteredSearch.length !== 0 && (
+            <div className={styles.dataResult}>
+              {filteredSearch.map((name) => {
+                return (
+                  <Link
+                    className={styles.link}
+                    to="/pokemoninfo"
+                    state={{ enteredSearch: name.name }}
+                  >
+                    <div className={styles.nameItem}>
+                      <p>{name.name}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className={styles.allbutton}>
