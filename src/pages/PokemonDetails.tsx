@@ -7,6 +7,7 @@ import { FaWeight } from 'react-icons/fa';
 import { FaRulerCombined } from 'react-icons/fa';
 import { Link, useLocation } from 'react-router-dom';
 import { usePokemonContext } from '../lib/context';
+import getColorByPokemonType from './../helpers/getColorByPokemonType';
 
 interface LocationState {
   enteredSearch?: string;
@@ -22,12 +23,17 @@ const PokemonDetails = () => {
     const pokemon = allPokemons.find(
       (pokemon) => state.enteredSearch === pokemon.name
     );
-    console.log(pokemon);
+
     if (pokemon !== undefined)
       return (
         <Layout>
           <Nav />
-          <div className={styles.container}>
+          <div
+            className={styles.container}
+            style={{
+              backgroundColor: getColorByPokemonType(pokemon.types[0].name),
+            }}
+          >
             <div className={styles.title}>
               <h1>{pokemon.name}</h1>
               <h3>{pokemon.nat_dex_num}</h3>
@@ -37,11 +43,31 @@ const PokemonDetails = () => {
                 <img src={pokemon.sprites.front_default} alt={pokemon.name} />
                 <div className={styles.typeInfo}>
                   {pokemon.types.map((type) => (
-                    <p key={pokemon.nat_dex_num}>{type.name}</p>
+                    <p
+                      style={{
+                        backgroundColor: getColorByPokemonType(type.name),
+                      }}
+                      key={pokemon.nat_dex_num}
+                    >
+                      {type.name}
+                    </p>
                   ))}
                 </div>
-                <Link className={styles.link} to="/addtopokedex">
-                  <button className={styles.save}>Add to Pokedex</button>
+                <Link
+                  className={styles.link}
+                  to="/addtopokedex"
+                  state={{ enteredSearch: pokemon.name }}
+                >
+                  <button
+                    className={styles.save}
+                    style={{
+                      backgroundColor: getColorByPokemonType(
+                        pokemon.types[0].name
+                      ),
+                    }}
+                  >
+                    Add to Pokedex
+                  </button>
                 </Link>
               </div>
               <div className={styles.about}>

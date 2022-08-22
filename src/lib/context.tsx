@@ -4,6 +4,8 @@ import { GET_GEN1_POKEMONS } from './query';
 
 const PokemonContext = createContext({
   allPokemons: [] as Pokemon[],
+  pokedex: [] as Pokemon[],
+  addPokemonToPokedex: (pokemons: Pokemon[]) => {},
 });
 
 interface ProviderProps {
@@ -37,6 +39,7 @@ export type Pokemon = {
 
 export const PokemonContextProvider = (props: ProviderProps) => {
   const [pokemons, setPokemons] = useState<Pokemon[]>([]);
+  const [addPokemon, setAddPokemon] = useState<Pokemon[]>([]);
 
   const { loading, error, data } = useQuery(GET_GEN1_POKEMONS, {
     variables: { limit: 151, game: 'firered' },
@@ -53,6 +56,8 @@ export const PokemonContextProvider = (props: ProviderProps) => {
     <PokemonContext.Provider
       value={{
         allPokemons: pokemons,
+        pokedex: addPokemon,
+        addPokemonToPokedex: setAddPokemon,
       }}
     >
       {props.children}
