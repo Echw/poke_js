@@ -13,7 +13,7 @@ function App() {
   return (
     <ApolloProvider client={client}>
       <PokemonContextProvider>
-        <BrowserRouter>
+        <BrowserRouter basename={window.location.pathname || ''}>
           <AppRoutes />
         </BrowserRouter>
       </PokemonContextProvider>
