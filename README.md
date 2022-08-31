@@ -6,7 +6,7 @@ PokeJS is an app to find and save pokemons in your own pokedex
 
 ## API
 
-ReactWeatherApp uses the https://pokeapi.co/
+ReactWeatherApp uses the https://dex-server.herokuapp.com/
 
 
 ## Live-Preview
@@ -44,7 +44,7 @@ Start the server
     
 ## Tech Stack
 
-**Client:** React, TypeScript, Styled-components, Axios
+**Client:** React, TypeScript, GarphQL, Apollo
 
 
 
