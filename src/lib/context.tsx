@@ -1,5 +1,6 @@
 import { useQuery } from '@apollo/client';
 import { createContext, useContext, useEffect, useState } from 'react';
+import Loading from '../components/Loading';
 import { GET_GEN1_POKEMONS } from './query';
 
 const PokemonContext = createContext({
@@ -49,7 +50,7 @@ export const PokemonContextProvider = (props: ProviderProps) => {
     if (data?.allPokemon) setPokemons(data.allPokemon);
   }, [data]);
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) return <Loading />;
   if (error) return <p> Oh no... {error.message}</p>;
 
   return (

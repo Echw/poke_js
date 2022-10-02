@@ -8,6 +8,7 @@ import { FaRulerCombined } from 'react-icons/fa';
 import { Link, useLocation } from 'react-router-dom';
 import { usePokemonContext } from '../lib/context';
 import getColorByPokemonType from './../helpers/getColorByPokemonType';
+import { zeroPad } from '../helpers/zeroPad';
 
 interface LocationState {
   enteredSearch?: string;
@@ -36,7 +37,7 @@ const PokemonDetails = () => {
           >
             <div className={styles.title}>
               <h1>{pokemon.name}</h1>
-              <h3>{pokemon.nat_dex_num}</h3>
+              <h3>#{zeroPad(pokemon.nat_dex_num, 3)}</h3>
             </div>
             <div className={styles.detailsContainer}>
               <div className={styles.types}>
