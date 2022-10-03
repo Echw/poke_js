@@ -4,14 +4,21 @@
   background-color: $grass;
   width: 100%;
   padding-bottom: 5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-around;
 }
 
 .saveContainer {
   background-color: white;
   display: flex;
+  align-items: center;
   justify-content: space-around;
   margin: 0 20rem 0 20rem;
   border-radius: 5rem;
+  width: 40%;
+  padding: 2rem 0;
 }
 
 .backBtn {
@@ -37,6 +44,12 @@
   }
 }
 
+.types {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-around;
+}
 .typeInfo {
   display: flex;
   gap: 1rem;

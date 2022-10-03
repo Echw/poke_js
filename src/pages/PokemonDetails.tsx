@@ -164,7 +164,7 @@ const PokemonDetails = () => {
         </Layout>
       );
   }
-  return <div>Hello world</div>;
+  return <div>No pokemon found...</div>;
 };
 
 export default PokemonDetails;

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Nav from '../components/Nav';
 import getColorByPokemonType from '../helpers/getColorByPokemonType';
+import { zeroPad } from '../helpers/zeroPad';
 import { Pokemon, usePokemonContext } from '../lib/context';
 import styles from './AddToPokedex.module.scss';
 
@@ -61,7 +62,7 @@ const AddToPokedex = () => {
         >
           <div className={styles.title}>
             <h1>{chosenPokemon.name}</h1>
-            <h3>{chosenPokemon.nat_dex_num}</h3>
+            <h3>#{zeroPad(chosenPokemon.nat_dex_num, 3)}</h3>
           </div>
           <div className={styles.saveContainer}>
             <div className={styles.types}>
@@ -110,7 +111,7 @@ const AddToPokedex = () => {
     );
   }
 
-  return <div>Hello world</div>;
+  return <div>No pokemon found...</div>;
 };
 
 export default AddToPokedex;

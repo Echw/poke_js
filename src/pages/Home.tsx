@@ -46,24 +46,26 @@ const Home = () => {
             <button>
               <AiOutlineSearch />
             </button>
+            {enteredSearch.length !== 0 && (
+              <div className={styles.dataResult}>
+                {filteredSearch
+                  .map((name) => {
+                    return (
+                      <Link
+                        className={styles.link}
+                        to="/pokemoninfo"
+                        state={{ enteredSearch: name.name }}
+                      >
+                        <div className={styles.nameItem}>
+                          <p>{name.name}</p>
+                        </div>
+                      </Link>
+                    );
+                  })
+                  .slice(0, 6)}
+              </div>
+            )}
           </form>
-          {enteredSearch.length !== 0 && (
-            <div className={styles.dataResult}>
-              {filteredSearch.map((name) => {
-                return (
-                  <Link
-                    className={styles.link}
-                    to="/pokemoninfo"
-                    state={{ enteredSearch: name.name }}
-                  >
-                    <div className={styles.nameItem}>
-                      <p>{name.name}</p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         <div className={styles.allbutton}>
