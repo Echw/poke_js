@@ -4,20 +4,18 @@ import { Link, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Nav from '../components/Nav';
 import styles from './Home.module.scss';
-import { Pokemon, usePokemonContext } from '../lib/context';
+import { usePokemonContext } from '../lib/context';
 
 const Home = () => {
   const [enteredSearch, setEnteredSearch] = useState('');
-  const [filteredSearch, setFilteredSearch] = useState<Pokemon[]>([]);
   const navigation = useNavigate();
   const { allPokemons } = usePokemonContext();
+  const filteredSearch = allPokemons.filter((pokemon) =>
+    pokemon.name.includes(enteredSearch.trim().toLowerCase())
+  );
 
   const searchChangeHandler = (event: React.ChangeEvent<HTMLInputElement>) => {
     setEnteredSearch(event.target.value);
-    const newFilter = allPokemons.filter((name) => {
-      return name.name.includes(event.target.value);
-    });
-    setFilteredSearch(newFilter);
   };
 
   const onSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -25,7 +23,9 @@ const Home = () => {
     if (enteredSearch.trim() === '') {
       return;
     }
-    navigation('/pokemoninfo', { state: { enteredSearch } });
+    navigation('/pokemoninfo', {
+      state: { enteredSearch: enteredSearch.trim().toLowerCase() },
+    });
   };
 
   return (
@@ -52,6 +52,7 @@ const Home = () => {
                   .map((name) => {
                     return (
                       <Link
+                        key={name.id}
                         className={styles.link}
                         to="/pokemoninfo"
                         state={{ enteredSearch: name.name }}
@@ -75,15 +76,15 @@ const Home = () => {
               {allPokemons.length > 0 && (
                 <div>
                   <img
-                    src={allPokemons[0].sprites.front_default}
+                    src={allPokemons[0].sprite}
                     alt={allPokemons[0].name}
                   />
                   <img
-                    src={allPokemons[3].sprites.front_default}
+                    src={allPokemons[3].sprite}
                     alt={allPokemons[3].name}
                   />
                   <img
-                    src={allPokemons[6].sprites.front_default}
+                    src={allPokemons[6].sprite}
                     alt={allPokemons[6].name}
                   />
                 </div>

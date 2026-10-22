@@ -18,6 +18,7 @@ const AllPokemons = () => {
           <div className={styles.itemsContainer}>
             {allPokemons.map((pokemon) => (
               <Link
+                key={pokemon.id}
                 className={styles.link}
                 to="/pokemoninfo"
                 state={{ enteredSearch: pokemon.name }}

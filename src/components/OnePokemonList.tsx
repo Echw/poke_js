@@ -1,18 +1,18 @@
 import React from 'react';
 import { zeroPad } from '../helpers/zeroPad';
-import { Pokemon } from '../lib/context';
+import { PokemonSummary } from '../lib/pokeapi';
 
 import styles from './OnePokemonList.module.scss';
 interface PokemonProps {
-  pokemon: Pokemon;
+  pokemon: PokemonSummary;
 }
 
 const OnePokemonList = (props: PokemonProps) => {
   return (
     <div className={styles.box}>
-      <img src={props.pokemon.sprites.front_default} alt="" />
+      <img src={props.pokemon.sprite} alt={props.pokemon.name} />
       <h4>{props.pokemon.name}</h4>
-      <p>#{zeroPad(props.pokemon.nat_dex_num, 3)}</p>
+      <p>#{zeroPad(props.pokemon.id, 3)}</p>
     </div>
   );
 };

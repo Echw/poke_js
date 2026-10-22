@@ -1,170 +1,153 @@
 import React from 'react';
-import Layout from '../components/Layout';
-import Nav from '../components/Nav';
-import './PokemonDetails';
-import styles from './PokemonDetails.module.scss';
-import { FaWeight } from 'react-icons/fa';
-import { FaRulerCombined } from 'react-icons/fa';
+import { FaRulerCombined, FaWeight } from 'react-icons/fa';
 import { Link, useLocation } from 'react-router-dom';
-import { usePokemonContext } from '../lib/context';
-import getColorByPokemonType from './../helpers/getColorByPokemonType';
+import Layout from '../components/Layout';
+import Loading from '../components/Loading';
+import Nav from '../components/Nav';
+import getColorByPokemonType from '../helpers/getColorByPokemonType';
 import { zeroPad } from '../helpers/zeroPad';
+import { usePokemonContext } from '../lib/context';
+import { EvolutionNode, StatName } from '../lib/pokeapi';
+import { usePokemonDetail } from '../lib/usePokemonDetail';
+import styles from './PokemonDetails.module.scss';
 
 interface LocationState {
   enteredSearch?: string;
 }
 
+const statLabels: { name: StatName; label: string }[] = [
+  { name: 'hp', label: 'HP' },
+  { name: 'attack', label: 'ATK' },
+  { name: 'defense', label: 'DEF' },
+  { name: 'special-attack', label: 'SATK' },
+  { name: 'special-defense', label: 'SDEF' },
+  { name: 'speed', label: 'SPD' },
+];
+
+function EvolutionStage({ node }: { node: EvolutionNode }) {
+  return (
+    <div className={styles.evolutionBranch}>
+      <div className={styles.evolutionPokemon}>
+        <img src={node.sprite} alt={node.name} />
+        <span>{node.name}</span>
+      </div>
+      {node.evolvesTo.length > 0 && (
+        <div className={styles.evolutionChildren}>
+          {node.evolvesTo.map((child) => (
+            <EvolutionStage key={child.id} node={child} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PokemonDetails = () => {
   const { allPokemons } = usePokemonContext();
-  const state = useLocation().state as LocationState;
-  if (state === null || state === undefined) {
-    return <p>Error</p>;
-  }
-  if (state.enteredSearch !== undefined && state.enteredSearch !== '') {
-    const pokemon = allPokemons.find(
-      (pokemon) => state.enteredSearch === pokemon.name
-    );
+  const state = useLocation().state as LocationState | null;
+  const name = state?.enteredSearch?.trim().toLowerCase();
+  const summary = allPokemons.find((pokemon) => pokemon.name === name);
+  const { pokemon, loading, error, retry } = usePokemonDetail(summary?.id);
 
-    if (pokemon !== undefined)
-      return (
-        <Layout>
-          <Nav />
-          <div
-            className={styles.container}
-            style={{
-              backgroundColor: getColorByPokemonType(pokemon.types[0].name),
-            }}
-          >
-            <div className={styles.title}>
-              <h1>{pokemon.name}</h1>
-              <h3>#{zeroPad(pokemon.nat_dex_num, 3)}</h3>
-            </div>
-            <div className={styles.detailsContainer}>
-              <div className={styles.types}>
-                <img src={pokemon.sprites.front_default} alt={pokemon.name} />
-                <div className={styles.typeInfo}>
-                  {pokemon.types.map((type) => (
-                    <p
-                      style={{
-                        backgroundColor: getColorByPokemonType(type.name),
-                      }}
-                      key={pokemon.nat_dex_num}
-                    >
-                      {type.name}
-                    </p>
-                  ))}
-                </div>
-                <Link
-                  className={styles.link}
-                  to="/addtopokedex"
-                  state={{ enteredSearch: pokemon.name }}
+  if (!summary) {
+    return <Layout><Nav /><p>No Pokémon found.</p></Layout>;
+  }
+  if (loading) {
+    return <Layout><Nav /><Loading /></Layout>;
+  }
+  if (error || !pokemon) {
+    return (
+      <Layout>
+        <Nav />
+        <div role="alert">
+          <p>Could not load {summary.name}. {error}</p>
+          <button onClick={retry}>Try again</button>
+        </div>
+      </Layout>
+    );
+  }
+
+  const primaryType = pokemon.types[0] || 'normal';
+
+  return (
+    <Layout>
+      <Nav />
+      <div
+        className={styles.container}
+        style={{ backgroundColor: getColorByPokemonType(primaryType) }}
+      >
+        <div className={styles.title}>
+          <h1>{pokemon.name}</h1>
+          <h3>#{zeroPad(pokemon.id, 3)}</h3>
+        </div>
+        <div className={styles.detailsContainer}>
+          <div className={styles.types}>
+            <img src={pokemon.sprite} alt={pokemon.name} />
+            <div className={styles.typeInfo}>
+              {pokemon.types.map((type) => (
+                <p
+                  key={type}
+                  style={{ backgroundColor: getColorByPokemonType(type) }}
                 >
-                  <button
-                    className={styles.save}
-                    style={{
-                      backgroundColor: getColorByPokemonType(
-                        pokemon.types[0].name
-                      ),
-                    }}
-                  >
-                    Add to Pokedex
-                  </button>
-                </Link>
+                  {type}
+                </p>
+              ))}
+            </div>
+            <Link
+              className={`${styles.link} ${styles.save}`}
+              to="/addtopokedex"
+              state={{ enteredSearch: pokemon.name }}
+              style={{ backgroundColor: getColorByPokemonType(primaryType) }}
+            >
+              Add to Pokedex
+            </Link>
+          </div>
+          <div className={styles.about}>
+            <h2>About</h2>
+            <div>
+              <div>
+                <FaWeight />
+                <p>{pokemon.weightGrams}g</p>
+                <h3>Weight</h3>
               </div>
-              <div className={styles.about}>
-                <h2>About</h2>
-                <div>
-                  <div>
-                    <FaWeight className="style.icon" />
-                    <p>{pokemon.weight}g</p>
-                    <h3>Weight</h3>
-                  </div>
-                  <div>
-                    <FaRulerCombined className="style.icon" />
-                    <p>{pokemon.height}cm</p>
-                    <h3>Height</h3>
-                  </div>
-                  <div>
-                    <p>{pokemon.moves[0].name}</p>
-                    <p>{pokemon.moves[1].name}</p>
-                    <h3>Moves</h3>
-                  </div>
-                </div>
+              <div>
+                <FaRulerCombined />
+                <p>{pokemon.heightCentimeters}cm</p>
+                <h3>Height</h3>
               </div>
-              <div className={styles.stats}>
-                <h2>Base Stats</h2>
-                <div className={styles.dataContainer}>
-                  <div>
-                    <h3>HP</h3>
-                    <p>{pokemon.base_stats.hp}</p>
-                  </div>
-                  <div>
-                    <h3>ATK</h3>
-                    <p>{pokemon.base_stats.attack}</p>
-                  </div>
-                  <div>
-                    <h3>DEF</h3>
-                    <p>{pokemon.base_stats.defense}</p>
-                  </div>
-                  <div>
-                    <h3>SATK</h3>
-                    <p>{pokemon.base_stats.special_attack}</p>
-                  </div>
-                  <div>
-                    <h3>SDEF</h3>
-                    <p>{pokemon.base_stats.special_defense}</p>
-                  </div>
-                  <div>
-                    <h3>SPD</h3>
-                    <p>{pokemon.base_stats.speed}</p>
-                  </div>
-                </div>
-              </div>
-              <div className={styles.evolution}>
-                <h2>Evolution Chain</h2>
-                <div>
-                  {pokemon.evolution_chain_start !== null && (
-                    <>
-                      <img
-                        src={
-                          pokemon.evolution_chain_start.sprites.front_default
-                        }
-                        alt="evolution chain 1"
-                      />
-                      {pokemon.evolution_chain_start.evolves_to !== null && (
-                        <>
-                          {pokemon.evolution_chain_start.evolves_to.map(
-                            (evolve) => (
-                              <img
-                                src={evolve.sprites.front_default}
-                                alt="evolution chain 2"
-                              />
-                            )
-                          )}
-                        </>
-                      )}
-                      {pokemon.evolution_chain_start.evolves_to[0]
-                        .evolves_to !== null && (
-                        <>
-                          <img
-                            src={
-                              pokemon.evolution_chain_start.evolves_to[0]
-                                .evolves_to[0].sprites.front_default
-                            }
-                            alt="evolution chain 3"
-                          />
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
+              <div>
+                {pokemon.moves.length > 0 ? (
+                  pokemon.moves.map((move) => <p key={move}>{move}</p>)
+                ) : (
+                  <p>No moves available</p>
+                )}
+                <h3>Moves</h3>
               </div>
             </div>
           </div>
-        </Layout>
-      );
-  }
-  return <div>No pokemon found...</div>;
+          <div className={styles.stats}>
+            <h2>Base Stats</h2>
+            <div className={styles.dataContainer}>
+              {statLabels.map(({ name, label }) => (
+                <div key={name}>
+                  <h3>{label}</h3>
+                  <p>{pokemon.stats[name] ?? '—'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={styles.evolution}>
+            <h2>Evolution Chain</h2>
+            {pokemon.evolution ? (
+              <EvolutionStage node={pokemon.evolution} />
+            ) : (
+              <p>No evolution data available.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </Layout>
+  );
 };
 
 export default PokemonDetails;

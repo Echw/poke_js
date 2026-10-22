@@ -1,67 +1,60 @@
-import { useQuery } from '@apollo/client';
 import { createContext, useContext, useEffect, useState } from 'react';
 import Loading from '../components/Loading';
-import { GET_GEN1_POKEMONS } from './query';
+import { getGenerationOne, PokemonSummary } from './pokeapi';
 
 const PokemonContext = createContext({
-  allPokemons: [] as Pokemon[],
-  pokedex: [] as Pokemon[],
-  addPokemonToPokedex: (pokemons: Pokemon[]) => {},
+  allPokemons: [] as PokemonSummary[],
+  pokedex: [] as PokemonSummary[],
+  addPokemonToPokedex: (_pokemons: PokemonSummary[]) => {},
 });
 
 interface ProviderProps {
   children: React.ReactNode;
 }
-export type Pokemon = {
-  name: string;
-  weight: number;
-  height: number;
-  color: string;
-  nat_dex_num: number;
-  sprites: { front_default: string };
-  types: { name: string }[];
-  moves: { name: string }[];
-  base_stats: {
-    hp: number;
-    attack: number;
-    defense: number;
-    special_attack: number;
-    special_defense: number;
-    speed: number;
-  };
-  evolution_chain_start: {
-    sprites: { front_default: string };
-    evolves_to: {
-      sprites: { front_default: string };
-      evolves_to: { sprites: { front_default: string } }[];
-    }[];
-  };
-};
 
-export const PokemonContextProvider = (props: ProviderProps) => {
-  const [pokemons, setPokemons] = useState<Pokemon[]>([]);
-  const [addPokemon, setAddPokemon] = useState<Pokemon[]>([]);
-
-  const { loading, error, data } = useQuery(GET_GEN1_POKEMONS, {
-    variables: { limit: 151, game: 'firered' },
-  });
+export const PokemonContextProvider = ({ children }: ProviderProps) => {
+  const [allPokemons, setAllPokemons] = useState<PokemonSummary[]>([]);
+  const [pokedex, addPokemonToPokedex] = useState<PokemonSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    if (data?.allPokemon) setPokemons(data.allPokemon);
-  }, [data]);
+    let active = true;
+    setLoading(true);
+    setError(null);
+    getGenerationOne()
+      .then((pokemons) => {
+        if (active) setAllPokemons(pokemons);
+      })
+      .catch((cause) => {
+        if (active) setError(cause instanceof Error ? cause.message : String(cause));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [retryCount]);
 
   if (loading) return <Loading />;
-  if (error) return <p> Oh no... {error.message}</p>;
+  if (error) {
+    return (
+      <div role="alert">
+        <p>Could not load Pokémon from PokéAPI. {error}</p>
+        <button onClick={() => setRetryCount((count) => count + 1)}>
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <PokemonContext.Provider
-      value={{
-        allPokemons: pokemons,
-        pokedex: addPokemon,
-        addPokemonToPokedex: setAddPokemon,
-      }}
+      value={{ allPokemons, pokedex, addPokemonToPokedex }}
     >
-      {props.children}
+      {children}
     </PokemonContext.Provider>
   );
 };

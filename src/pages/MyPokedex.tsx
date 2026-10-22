@@ -16,8 +16,9 @@ const MyPokedex = () => {
         <div className={styles.insideContainer}>
           <h2>My Pokedex</h2>
           <div className={styles.itemsContainer}>
-            {pokedex.map((pokemon) => (
+            {pokedex.map((pokemon, index) => (
               <Link
+                key={`${pokemon.id}-${index}`}
                 className={styles.link}
                 to="/pokemoninfo"
                 state={{ enteredSearch: pokemon.name }}
