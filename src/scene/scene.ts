@@ -4,6 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import pokeballUrl from '../assets/pokeball.glb?url';
 import gsap from 'gsap';
 
+import { createCardGeometry } from './card';
+
 
 export const sceneController = {
     async initScene(canvas: HTMLCanvasElement) {
@@ -18,6 +20,8 @@ export const sceneController = {
         const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 1000);
         camera.position.set(0, 0, 3);
         camera.updateProjectionMatrix();
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
         directionalLight.position.set(1, 1, 3);
@@ -33,8 +37,11 @@ export const sceneController = {
         const glb = await loader.loadAsync(pokeballUrl);
         scene.add(glb.scene);
 
+        const card = new THREE.Mesh(createCardGeometry(), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+        card.position.set(1.5, 0, 0);
+        scene.add(card);
+
         const lid = glb.scene.getObjectByName("button_low001")
-        console.log(lid)
 
         if (lid) {
             gsap.to(lid.rotation, {
@@ -62,6 +69,18 @@ export const sceneController = {
 
 
         renderer.render(scene, camera);
+
+        return {
+            async setCardImage(image: string) {
+                const texture = await new THREE.TextureLoader().loadAsync(image);
+                texture.colorSpace = THREE.SRGBColorSpace;
+                card.material.map = texture;
+                card.material.color.set(0xffffff)
+                card.material.needsUpdate = true;
+                renderer.render(scene, camera);
+                console.log(image);
+            },
+        };
     }
 
 
