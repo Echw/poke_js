@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
 import pokeballUrl from '../assets/pokeball.glb?url';
 import gsap from 'gsap';
 
@@ -37,7 +38,25 @@ export const sceneController = {
         const glb = await loader.loadAsync(pokeballUrl);
         scene.add(glb.scene);
 
-        const card = new THREE.Mesh(createCardGeometry(), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+
+
+
+        const frontMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const backMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const otherMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+        const textureBack = await new THREE.TextureLoader().loadAsync('/textures/artwork_back.webp');
+        textureBack.colorSpace = THREE.SRGBColorSpace;
+        backMaterial.map = textureBack;
+        backMaterial.color.set(0xffffff)
+        backMaterial.needsUpdate = true;
+
+        const materials = [
+            otherMaterial, otherMaterial,
+            otherMaterial, otherMaterial,
+            frontMaterial, backMaterial,
+        ];
+        const card = new THREE.Mesh(createCardGeometry(), materials);
         card.position.set(1.5, 0, 0);
         scene.add(card);
 
@@ -49,7 +68,12 @@ export const sceneController = {
                 onUpdate: () => renderer.render(scene, camera)
             })
         }
-
+        if (card) {
+            gsap.to(card.rotation, {
+                y: -Math.PI, ease: "power2.out", duration: 2, delay: 2,
+                onUpdate: () => renderer.render(scene, camera)
+            })
+        }
 
         window.addEventListener("resize", () => {
             // Update sizes
@@ -74,9 +98,13 @@ export const sceneController = {
             async setCardImage(image: string) {
                 const texture = await new THREE.TextureLoader().loadAsync(image);
                 texture.colorSpace = THREE.SRGBColorSpace;
-                card.material.map = texture;
-                card.material.color.set(0xffffff)
-                card.material.needsUpdate = true;
+                frontMaterial.map = texture;
+                frontMaterial.color.set(0xffffff)
+                frontMaterial.needsUpdate = true;
+
+                otherMaterial.color.set(0x192654)
+                otherMaterial.needsUpdate = true;
+
                 renderer.render(scene, camera);
                 console.log(image);
             },

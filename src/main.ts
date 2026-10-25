@@ -14,7 +14,7 @@ const card = await fetchCard();
 if (!card) {
     throw new Error('Card not found');
 }
-scene.setCardImage(card);
+await scene.setCardImage(card);
 console.log(card);
 
 
