@@ -10,6 +10,19 @@
 <body>
   <main id="app">
     <canvas id="canvas"></canvas>
+    <form id="pokemon-search" class="summon-form" role="search">
+      <label class="visually-hidden" for="pokemon-name">Pokémon name</label>
+      <input
+        id="pokemon-name"
+        class="summon-form__input"
+        name="pokemon"
+        type="search"
+        placeholder="Search Pokémon"
+        spellcheck="false"
+        required
+      />
+      <button class="summon-form__button" type="submit"><span>Summon</span></button>
+    </form>
   </main>
   <script type="module" src="/src/main.ts"></script>
 </body>
