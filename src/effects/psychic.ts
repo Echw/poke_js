@@ -411,6 +411,11 @@ export class PsychicEffect implements PokemonRevealEffect {
         }, ribbonVertex, ribbonFragment, true, true);
     }
 
+    setActive(active: boolean): void {
+        this.root.visible = active;
+        this.manifestation.setActive(active);
+    }
+
     addToTimeline(timeline: gsap.core.Timeline): void {
         timeline.to(this.state, { core: 1, duration: 0.4, ease: 'power2.out' }, 0);
         timeline.to(this.state, { burst: 1, duration: 0.4, ease: 'power3.out' }, 0.4);

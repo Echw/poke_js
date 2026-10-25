@@ -37,14 +37,14 @@ async function start() {
         status.textContent = 'Loading Abra…';
 
         void (async () => {
-            const imageBase = await initialCard;
+            const selectedCard = await initialCard;
             if (cardRequestId !== 0) return;
-            if (!imageBase) {
+            if (!selectedCard) {
                 status.textContent = 'Could not load Abra. Search to try again.';
                 return;
             }
             try {
-                const applied = await loadCardImage(scene, imageBase, () => cardRequestId === 0);
+                const applied = await loadCardImage(scene, selectedCard.image, () => cardRequestId === 0);
                 if (cardRequestId === 0 && applied) status.textContent = '';
             } catch (error) {
                 console.error('Could not load Abra image.', error);
@@ -60,16 +60,16 @@ async function start() {
             submitButton.disabled = true;
             status.textContent = 'Finding card…';
             try {
-                const imageBase = await fetchCard(name);
+                const selectedCard = await fetchCard(name);
                 if (!isCurrent()) return;
-                if (!imageBase) {
+                if (!selectedCard) {
                     status.textContent = `No card found for ${name}.`;
                     return;
                 }
-                const applied = await loadCardImage(scene, imageBase, isCurrent);
+                const applied = await loadCardImage(scene, selectedCard.image, isCurrent);
                 if (!isCurrent() || !applied) return;
                 status.textContent = '';
-                scene.play();
+                scene.play(selectedCard.types.includes('Lightning') ? 'electric' : 'psychic');
             } catch (error) {
                 console.error('Could not load card.', error);
                 if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';

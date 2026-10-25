@@ -7,6 +7,8 @@ import gsap from 'gsap';
 import pokeballUrl from '../assets/pokeball.glb?url';
 import skyEnvironmentUrl from '../assets/sky/NightSkyHDRI006_4K_HDR.exr?url';
 import { PsychicEffect } from '../effects/psychic';
+import { ElectricEffect } from '../effects/electric';
+import type { PokemonRevealEffect } from '../effects/types';
 import { createCardGeometry } from './card';
 
 function loadCardTexture(url: string): Promise<THREE.Texture> {
@@ -84,6 +86,9 @@ export const sceneController = {
         const psychicFill = new THREE.PointLight(0xe879f9, 0, 3.0);
         psychicFill.position.set(0, 0.3, 0.25);
         scene.add(psychicFill);
+        const electricFill = new THREE.PointLight(0xffd400, 0, 3.0);
+        electricFill.position.set(0, -0.02, 0.40);
+        scene.add(electricFill);
 
         scene.add(glb.scene);
 
@@ -113,13 +118,19 @@ export const sceneController = {
         const psychic = new PsychicEffect(card, window.innerWidth < 700);
         psychic.root.traverse((object) => { object.renderOrder = 2; });
         glb.scene.add(psychic.root);
+        let electric: ElectricEffect | undefined;
+        let activeEffect: PokemonRevealEffect = psychic;
 
         let disposed = false;
         let cardImageRequest = 0;
         let running = false;
         const render = () => {
-            psychic.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
-            psychicFill.intensity = psychic.state.burst * psychic.state.fade * 3.0;
+            activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
+            psychicFill.intensity = activeEffect === psychic ? psychic.state.burst * psychic.state.fade * 3.0 : 0;
+            electricFill.intensity = electric && activeEffect === electric
+                ? (electric.state.core * (1 - electric.state.card) * 2.4
+                    + electric.state.storm * (1 - electric.state.card * 0.7) * 0.6
+                    + electric.state.flash * (1 - electric.state.card * 0.7) * 1.1) * electric.state.fade : 0;
             renderer.render(scene, camera);
         };
         const startRender = () => {
@@ -133,18 +144,23 @@ export const sceneController = {
             render();
         };
         const finishRender = () => {
-            psychic.finish();
+            activeEffect.finish();
             stopRender();
         };
 
-        const timeline = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-        timeline.to(lid.rotation, { x: lidClosedX - degrees(45), duration: 1.90, ease: 'power1.out' }, 0);
-        timeline.to(glb.scene.rotation, { x: degrees(4), duration: 1.90, ease: 'power1.out' }, 0);
-        psychic.addToTimeline(timeline);
-        timeline.to(card.position, { y: 0.40, z: 0.50, duration: 0.70, ease: 'power2.out' }, 1.45);
-        timeline.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: 2.15, ease: 'power1.out' }, 1.35);
-        timeline.to(card.scale, { x: 1.18, y: 1.18, z: 1.18, duration: 0.70, ease: 'power2.out' }, 1.45);
-        timeline.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
+        const createTimeline = (reveal: 'psychic' | 'electric') => {
+            const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
+            const openingDuration = reveal === 'electric' ? 0.8 : 1.90;
+            next.to(lid.rotation, { x: lidClosedX - degrees(45), duration: openingDuration, ease: 'power1.out' }, 0);
+            next.to(glb.scene.rotation, { x: degrees(4), duration: openingDuration, ease: 'power1.out' }, 0);
+            activeEffect.addToTimeline(next);
+            next.to(card.position, { y: 0.40, z: 0.50, duration: 0.70, ease: 'power2.out' }, 1.45);
+            next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: 2.15, ease: 'power1.out' }, 1.35);
+            next.to(card.scale, { x: 1.18, y: 1.18, z: 1.18, duration: 0.70, ease: 'power2.out' }, 1.45);
+            next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
+            return next;
+        };
+        let timeline = createTimeline('psychic');
 
         const resize = () => {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -168,16 +184,25 @@ export const sceneController = {
                 if (!running) render();
                 return true;
             },
-            play() {
+            play(reveal: 'psychic' | 'electric' = 'psychic') {
                 if (disposed) return;
-                timeline.pause(0);
-                psychic.reset();
+                timeline.kill();
+                if (reveal === 'electric' && !electric) {
+                    electric = new ElectricEffect(card, window.innerWidth < 700);
+                    electric.root.traverse((object) => { object.renderOrder = 2; });
+                    glb.scene.add(electric.root);
+                }
+                activeEffect.setActive(false);
+                activeEffect = reveal === 'electric' ? electric! : psychic;
+                activeEffect.setActive(true);
+                activeEffect.reset();
                 glb.scene.rotation.set(0, 0, 0);
                 lid.rotation.x = lidClosedX;
                 card.position.set(0, 0.03, 0.26);
                 card.rotation.set(0, degrees(-70), degrees(-8));
                 card.scale.setScalar(0.26);
                 frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
+                timeline = createTimeline(reveal);
                 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                     timeline.progress(1);
                     finishRender();
@@ -197,6 +222,7 @@ export const sceneController = {
                 renderer.setAnimationLoop(null);
                 window.removeEventListener('resize', resize);
                 psychic.dispose();
+                electric?.dispose();
                 card.geometry.dispose();
                 if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
                 backTexture.dispose();
@@ -230,6 +256,7 @@ export const sceneController = {
                     });
                 });
                 renderer.dispose();
+                renderer.forceContextLoss();
             },
         };
     },

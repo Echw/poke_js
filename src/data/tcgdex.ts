@@ -1,12 +1,21 @@
-type CardBrief = { name: string; image: string };
+type CardBrief = { id: string; name: string; image: string };
+export type CardSelection = { image: string; types: string[] };
+type CardDetail = { image: string; types?: string[] };
 
 function isCardBrief(value: unknown): value is CardBrief {
     return value !== null && typeof value === 'object'
+        && 'id' in value && typeof value.id === 'string'
         && 'name' in value && typeof value.name === 'string'
         && 'image' in value && typeof value.image === 'string';
 }
 
-export async function fetchCard(name?: string): Promise<string | undefined> {
+function isCardDetail(value: unknown): value is CardDetail {
+    return value !== null && typeof value === 'object'
+        && 'image' in value && typeof value.image === 'string'
+        && (!('types' in value) || (Array.isArray(value.types) && value.types.every((type) => typeof type === 'string')));
+}
+
+export async function fetchCard(name?: string): Promise<CardSelection | undefined> {
     const query = name?.trim();
 
     const controller = new AbortController();
@@ -18,12 +27,17 @@ export async function fetchCard(name?: string): Promise<string | undefined> {
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) throw new Error(`TCGdex returned ${response.status}`);
         const data: unknown = await response.json();
+        let detail: unknown = data;
         if (query && Array.isArray(data)) {
             const results = data.filter(isCardBrief);
             const card = results.find((item) => item.name.toLowerCase() === query.toLowerCase()) ?? results[0];
-            return card?.image;
+            if (!card) return undefined;
+            const detailResponse = await fetch(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(card.id)}`, { signal: controller.signal });
+            if (!detailResponse.ok) throw new Error(`TCGdex returned ${detailResponse.status}`);
+            detail = await detailResponse.json();
         }
-        return isCardBrief(data) ? data.image : undefined;
+        if (!isCardDetail(detail)) return undefined;
+        return { image: detail.image, types: detail.types ?? [] };
     } finally {
         window.clearTimeout(timeout);
     }
