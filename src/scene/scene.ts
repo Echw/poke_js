@@ -1,116 +1,198 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-
-import pokeballUrl from '../assets/pokeball.glb?url';
+import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import gsap from 'gsap';
 
+import pokeballUrl from '../assets/pokeball.glb?url';
+import skyEnvironmentUrl from '../assets/sky/NightSkyHDRI006_4K_HDR.exr?url';
+import { PsychicEffect } from '../effects/psychic';
 import { createCardGeometry } from './card';
-
 
 export const sceneController = {
     async initScene(canvas: HTMLCanvasElement) {
         const scene = new THREE.Scene();
-
-        const sizes = {
-            width: window.innerWidth,
-            height: window.innerHeight,
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+        const frameCamera = () => {
+            camera.position.set(0, 0.32, camera.aspect < 0.8 ? 4.2 : 3.15);
+            camera.lookAt(0, 0.32, 0);
+            camera.updateProjectionMatrix();
         };
+        frameCamera();
 
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
-        const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 1000);
-        camera.position.set(0, 0, 3);
-        camera.updateProjectionMatrix();
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
+        const skyEnvironment = await new EXRLoader().loadAsync(skyEnvironmentUrl);
+        skyEnvironment.mapping = THREE.EquirectangularReflectionMapping;
+        scene.background = skyEnvironment;
+        scene.backgroundIntensity = 0.65;
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const environmentTarget = pmrem.fromEquirectangular(skyEnvironment);
+        scene.environment = environmentTarget.texture;
+        scene.environmentIntensity = 0.8;
+        pmrem.dispose();
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
-        directionalLight.position.set(1, 1, 3);
-        scene.add(directionalLight);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        const keyLight = new THREE.DirectionalLight(0xffffff, 2.3);
+        keyLight.position.set(1.5, 2, 3);
+        scene.add(keyLight);
+        const psychicFill = new THREE.PointLight(0xe879f9, 0, 3.0);
+        psychicFill.position.set(0, 0.3, 0.25);
+        scene.add(psychicFill);
 
-        const renderer = new THREE.WebGLRenderer({ canvas })
-        renderer.setSize(sizes.width, sizes.height);
-
-        const loader = new GLTFLoader();
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('/draco/');
+        const loader = new GLTFLoader();
         loader.setDRACOLoader(dracoLoader);
         const glb = await loader.loadAsync(pokeballUrl);
+        dracoLoader.dispose();
         scene.add(glb.scene);
 
-
-
-
-        const frontMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        const backMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        const otherMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-        const textureBack = await new THREE.TextureLoader().loadAsync('/textures/artwork_back.webp');
-        textureBack.colorSpace = THREE.SRGBColorSpace;
-        backMaterial.map = textureBack;
-        backMaterial.color.set(0xffffff)
+        const frontMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
+        const backMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
+        const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0x192654, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
+        const backTexture = await new THREE.TextureLoader().loadAsync('/textures/artwork_back.webp');
+        backTexture.colorSpace = THREE.SRGBColorSpace;
+        backMaterial.map = backTexture;
         backMaterial.needsUpdate = true;
 
-        const materials = [
-            otherMaterial, otherMaterial,
-            otherMaterial, otherMaterial,
-            frontMaterial, backMaterial,
-        ];
-        const card = new THREE.Mesh(createCardGeometry(), materials);
-        card.position.set(1.5, 0, 0);
-        scene.add(card);
+        const card = new THREE.Mesh(createCardGeometry(), [
+            edgeMaterial, edgeMaterial, edgeMaterial, edgeMaterial, frontMaterial, backMaterial,
+        ]);
+        card.position.set(0, 0.03, 0.26);
+        card.rotation.set(0, THREE.MathUtils.degToRad(-70), THREE.MathUtils.degToRad(-8));
+        card.scale.setScalar(0.26);
+        card.renderOrder = 3;
+        glb.scene.add(card);
 
-        const lid = glb.scene.getObjectByName("button_low001")
+        const lid = glb.scene.getObjectByName('button_low001');
+        if (!lid) throw new Error('Poké Ball lid not found in GLB');
+        const lidClosedX = lid.rotation.x;
+        const degrees = THREE.MathUtils.degToRad;
 
-        if (lid) {
-            gsap.to(lid.rotation, {
-                x: -Math.PI / 4, ease: "power2.out", duration: 2, delay: 2,
-                onUpdate: () => renderer.render(scene, camera)
-            })
-        }
-        if (card) {
-            gsap.to(card.rotation, {
-                y: -Math.PI, ease: "power2.out", duration: 2, delay: 2,
-                onUpdate: () => renderer.render(scene, camera)
-            })
-        }
+        const psychic = new PsychicEffect(card, window.innerWidth < 700);
+        psychic.root.traverse((object) => { object.renderOrder = 2; });
+        glb.scene.add(psychic.root);
 
-        window.addEventListener("resize", () => {
-            // Update sizes
-            sizes.width = window.innerWidth;
-            sizes.height = window.innerHeight;
-
-            // Update camera
-            camera.aspect = sizes.width / sizes.height;
-            camera.updateProjectionMatrix();
-
-            // Update renderer
-            renderer.setSize(sizes.width, sizes.height);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
+        let disposed = false;
+        let running = false;
+        const render = () => {
+            psychic.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
+            psychicFill.intensity = psychic.state.burst * psychic.state.fade * 3.0;
             renderer.render(scene, camera);
-        });
+        };
+        const startRender = () => {
+            if (running) return;
+            running = true;
+            renderer.setAnimationLoop(render);
+        };
+        const stopRender = () => {
+            running = false;
+            renderer.setAnimationLoop(null);
+            render();
+        };
+        const finishRender = () => {
+            psychic.finish();
+            stopRender();
+        };
 
+        const timeline = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
+        // One uninterrupted opening motion avoids a hold between the energy and card phases.
+        timeline.to(lid.rotation, { x: lidClosedX - degrees(45), duration: 1.90, ease: 'power1.out' }, 0);
+        timeline.to(glb.scene.rotation, { x: degrees(4), duration: 1.90, ease: 'power1.out' }, 0);
+        psychic.addToTimeline(timeline);
+        timeline.to(card.position, { y: 0.40, z: 0.50, duration: 0.70, ease: 'power2.out' }, 1.45);
+        // The card keeps turning throughout silhouette and artwork reveal, without zero-velocity joins.
+        timeline.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: 2.15, ease: 'power1.out' }, 1.35);
+        timeline.to(card.scale, { x: 1.18, y: 1.18, z: 1.18, duration: 0.70, ease: 'power2.out' }, 1.45);
+        timeline.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
 
-        renderer.render(scene, camera);
+        const resize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            frameCamera();
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (!running) render();
+        };
+        window.addEventListener('resize', resize);
+        render();
 
         return {
             async setCardImage(image: string) {
                 const texture = await new THREE.TextureLoader().loadAsync(image);
+                if (disposed) { texture.dispose(); return; }
                 texture.colorSpace = THREE.SRGBColorSpace;
+                frontMaterial.map?.dispose();
                 frontMaterial.map = texture;
-                frontMaterial.color.set(0xffffff)
                 frontMaterial.needsUpdate = true;
-
-                otherMaterial.color.set(0x192654)
-                otherMaterial.needsUpdate = true;
-
-                renderer.render(scene, camera);
-                console.log(image);
+                if (!running) render();
+            },
+            play() {
+                if (disposed) return;
+                timeline.pause(0);
+                psychic.reset();
+                glb.scene.rotation.set(0, 0, 0);
+                lid.rotation.x = lidClosedX;
+                card.position.set(0, 0.03, 0.26);
+                card.rotation.set(0, degrees(-70), degrees(-8));
+                card.scale.setScalar(0.26);
+                frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
+                if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    timeline.progress(1);
+                    finishRender();
+                } else {
+                    timeline.play(0);
+                }
+            },
+            stop() {
+                timeline.pause();
+                stopRender();
+            },
+            dispose() {
+                if (disposed) return;
+                disposed = true;
+                timeline.kill();
+                renderer.setAnimationLoop(null);
+                window.removeEventListener('resize', resize);
+                psychic.dispose();
+                card.geometry.dispose();
+                frontMaterial.map?.dispose();
+                backTexture.dispose();
+                frontMaterial.dispose();
+                backMaterial.dispose();
+                edgeMaterial.dispose();
+                scene.background = null;
+                scene.environment = null;
+                skyEnvironment.dispose();
+                environmentTarget.dispose();
+                const disposedGeometries = new Set<THREE.BufferGeometry>();
+                const disposedMaterials = new Set<THREE.Material>();
+                const disposedTextures = new Set<THREE.Texture>();
+                glb.scene.traverse((object) => {
+                    if (!(object instanceof THREE.Mesh) || object === card) return;
+                    if (!disposedGeometries.has(object.geometry)) {
+                        object.geometry.dispose();
+                        disposedGeometries.add(object.geometry);
+                    }
+                    const materials = Array.isArray(object.material) ? object.material : [object.material];
+                    materials.forEach((material) => {
+                        if (disposedMaterials.has(material)) return;
+                        Object.values(material).forEach((value) => {
+                            if (value instanceof THREE.Texture && !disposedTextures.has(value)) {
+                                value.dispose();
+                                disposedTextures.add(value);
+                            }
+                        });
+                        material.dispose();
+                        disposedMaterials.add(material);
+                    });
+                });
+                renderer.dispose();
             },
         };
-    }
-
-
-}
-
+    },
+};

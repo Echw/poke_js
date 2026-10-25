@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <title>Pokejs</title>
 </head>
 
@@ -21,7 +22,8 @@
         spellcheck="false"
         required
       />
-      <button class="summon-form__button" type="submit"><span>Summon</span></button>
+      <button class="summon-form__button" type="submit" disabled><span>Summon</span></button>
+      <output id="summon-status" class="summon-form__status" aria-live="polite">Preparing reveal…</output>
     </form>
   </main>
   <script type="module" src="/src/main.ts"></script>
