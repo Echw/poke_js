@@ -69,7 +69,7 @@ export class CardManifestation {
         this.mesh.renderOrder = 4;
         card.add(this.mesh);
 
-        // The transformation outline disappears after reveal; this soft card rim remains.
+
         const canvas = document.createElement('canvas');
         canvas.width = 256;
         canvas.height = 320;

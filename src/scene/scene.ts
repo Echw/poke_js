@@ -9,6 +9,28 @@ import skyEnvironmentUrl from '../assets/sky/NightSkyHDRI006_4K_HDR.exr?url';
 import { PsychicEffect } from '../effects/psychic';
 import { createCardGeometry } from './card';
 
+function loadCardTexture(url: string): Promise<THREE.Texture> {
+    return new Promise((resolve, reject) => {
+        let timedOut = false;
+        const timeout = window.setTimeout(() => {
+            timedOut = true;
+            reject(new Error(`Card image timed out: ${url}`));
+        }, 5000);
+        new THREE.TextureLoader().load(url, (texture) => {
+            if (timedOut) {
+                texture.dispose();
+                return;
+            }
+            window.clearTimeout(timeout);
+            resolve(texture);
+        }, undefined, (error) => {
+            if (timedOut) return;
+            window.clearTimeout(timeout);
+            reject(error);
+        });
+    });
+}
+
 export const sceneController = {
     async initScene(canvas: HTMLCanvasElement) {
         const scene = new THREE.Scene();
@@ -26,7 +48,26 @@ export const sceneController = {
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
-        const skyEnvironment = await new EXRLoader().loadAsync(skyEnvironmentUrl);
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('/draco/');
+        const modelLoader = new GLTFLoader();
+        modelLoader.setDRACOLoader(dracoLoader);
+        const textureLoader = new THREE.TextureLoader();
+        let skyEnvironment: THREE.DataTexture;
+        let glb: Awaited<ReturnType<typeof modelLoader.loadAsync>>;
+        let backTexture: THREE.Texture;
+        try {
+            [skyEnvironment, glb, backTexture] = await Promise.all([
+                new EXRLoader().loadAsync(skyEnvironmentUrl),
+                modelLoader.loadAsync(pokeballUrl),
+                textureLoader.loadAsync('/textures/artwork_back.webp'),
+            ]);
+        } catch (error) {
+            renderer.dispose();
+            throw error;
+        } finally {
+            dracoLoader.dispose();
+        }
         skyEnvironment.mapping = THREE.EquirectangularReflectionMapping;
         scene.background = skyEnvironment;
         scene.backgroundIntensity = 0.65;
@@ -44,21 +85,16 @@ export const sceneController = {
         psychicFill.position.set(0, 0.3, 0.25);
         scene.add(psychicFill);
 
-        const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('/draco/');
-        const loader = new GLTFLoader();
-        loader.setDRACOLoader(dracoLoader);
-        const glb = await loader.loadAsync(pokeballUrl);
-        dracoLoader.dispose();
         scene.add(glb.scene);
 
         const frontMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
         const backMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
         const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0x192654, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
-        const backTexture = await new THREE.TextureLoader().loadAsync('/textures/artwork_back.webp');
         backTexture.colorSpace = THREE.SRGBColorSpace;
         backMaterial.map = backTexture;
         backMaterial.needsUpdate = true;
+        frontMaterial.map = backTexture;
+        frontMaterial.needsUpdate = true;
 
         const card = new THREE.Mesh(createCardGeometry(), [
             edgeMaterial, edgeMaterial, edgeMaterial, edgeMaterial, frontMaterial, backMaterial,
@@ -79,6 +115,7 @@ export const sceneController = {
         glb.scene.add(psychic.root);
 
         let disposed = false;
+        let cardImageRequest = 0;
         let running = false;
         const render = () => {
             psychic.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
@@ -101,12 +138,10 @@ export const sceneController = {
         };
 
         const timeline = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-        // One uninterrupted opening motion avoids a hold between the energy and card phases.
         timeline.to(lid.rotation, { x: lidClosedX - degrees(45), duration: 1.90, ease: 'power1.out' }, 0);
         timeline.to(glb.scene.rotation, { x: degrees(4), duration: 1.90, ease: 'power1.out' }, 0);
         psychic.addToTimeline(timeline);
         timeline.to(card.position, { y: 0.40, z: 0.50, duration: 0.70, ease: 'power2.out' }, 1.45);
-        // The card keeps turning throughout silhouette and artwork reveal, without zero-velocity joins.
         timeline.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: 2.15, ease: 'power1.out' }, 1.35);
         timeline.to(card.scale, { x: 1.18, y: 1.18, z: 1.18, duration: 0.70, ease: 'power2.out' }, 1.45);
         timeline.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
@@ -123,13 +158,15 @@ export const sceneController = {
 
         return {
             async setCardImage(image: string) {
-                const texture = await new THREE.TextureLoader().loadAsync(image);
-                if (disposed) { texture.dispose(); return; }
+                const request = ++cardImageRequest;
+                const texture = await loadCardTexture(image);
+                if (disposed || request !== cardImageRequest) { texture.dispose(); return false; }
                 texture.colorSpace = THREE.SRGBColorSpace;
-                frontMaterial.map?.dispose();
+                if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
                 frontMaterial.map = texture;
                 frontMaterial.needsUpdate = true;
                 if (!running) render();
+                return true;
             },
             play() {
                 if (disposed) return;
@@ -155,12 +192,13 @@ export const sceneController = {
             dispose() {
                 if (disposed) return;
                 disposed = true;
+                cardImageRequest++;
                 timeline.kill();
                 renderer.setAnimationLoop(null);
                 window.removeEventListener('resize', resize);
                 psychic.dispose();
                 card.geometry.dispose();
-                frontMaterial.map?.dispose();
+                if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
                 backTexture.dispose();
                 frontMaterial.dispose();
                 backMaterial.dispose();
