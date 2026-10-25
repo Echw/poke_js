@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CardManifestation } from './cardManifestation';
+import { CardTransformation } from './cardTransformation';
 import type { PokemonRevealEffect } from './types';
 
 const SEGMENTS = 18;
@@ -57,67 +56,6 @@ const lightningFragment = /* glsl */ `
     }
 `;
 
-const coreVertex = /* glsl */ `
-    uniform float uTime;
-    varying vec3 vNormal;
-    varying vec3 vView;
-    varying float vDisplacement;
-    void main() {
-        float wave = sin(position.x * 26.0 + uTime * 3.7)
-            * sin(position.y * 21.0 - uTime * 2.9)
-            * sin(position.z * 23.0 + uTime * 3.1);
-        vec3 pos = position + normal * wave * 0.014;
-        vec4 viewPosition = modelViewMatrix * vec4(pos, 1.0);
-        vNormal = normalize(normalMatrix * normal);
-        vView = normalize(-viewPosition.xyz);
-        vDisplacement = wave;
-        gl_Position = projectionMatrix * viewPosition;
-    }
-`;
-
-const coreFragment = /* glsl */ `
-    uniform float uOpacity;
-    uniform float uTime;
-    uniform vec3 uGold;
-    uniform vec3 uHot;
-    uniform vec3 uRim;
-    varying vec3 vNormal;
-    varying vec3 vView;
-    varying float vDisplacement;
-    void main() {
-        float facing = max(0.0, dot(normalize(vNormal), normalize(vView)));
-        float fresnel = pow(1.0 - facing, 2.1);
-        float pulse = 0.88 + 0.12 * sin(uTime * 10.0);
-        vec3 color = mix(uGold, uHot, pow(facing, 0.9));
-        color += fresnel * uRim + vDisplacement * 0.06;
-        gl_FragColor = vec4(color * pulse, uOpacity);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-    }
-`;
-
-const glowVertex = /* glsl */ `
-    varying vec2 vUv;
-    void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-`;
-
-const glowFragment = /* glsl */ `
-    uniform vec3 uColor;
-    uniform float uOpacity;
-    varying vec2 vUv;
-    void main() {
-        float d = length(vUv - 0.5) * 2.0;
-        float center = exp(-d * d * 8.0);
-        float halo = exp(-d * d * 2.2) * 0.56;
-        gl_FragColor = vec4(uColor, (center + halo) * uOpacity);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-    }
-`;
-
 const sparkVertex = /* glsl */ `
     attribute vec4 aSpark;
     uniform float uTime;
@@ -158,9 +96,7 @@ const sparkFragment = /* glsl */ `
 const streakVertex = /* glsl */ `
     attribute vec2 aCorner;
     attribute vec4 aStreak;
-    attribute vec3 aFinalCenter;
     uniform float uTime;
-    uniform float uFinal;
     varying vec2 vCorner;
     varying float vLife;
     void main() {
@@ -170,15 +106,10 @@ const streakVertex = /* glsl */ `
         vec3 center = vec3(cos(angle) * travel,
             -0.06 + life * (0.60 + aStreak.w * 0.85),
             0.57 + sin(angle) * travel * 0.35);
-        if (uFinal > 0.5) {
-            center = aFinalCenter;
-            life = 0.12;
-        }
         vec4 viewPosition = modelViewMatrix * vec4(center, 1.0);
         vec2 direction = normalize(vec2(cos(angle), 0.75 + sin(angle)));
         vec2 across = vec2(-direction.y, direction.x);
         float length = (0.12 + aStreak.w * 0.12) * (1.0 - life * 0.55);
-        if (uFinal > 0.5) length *= 0.90;
         float width = 0.014 + aStreak.w * 0.012;
         viewPosition.xy += direction * (aCorner.x - 0.5) * length + across * aCorner.y * width;
         vCorner = aCorner;
@@ -207,9 +138,18 @@ const streakFragment = /* glsl */ `
 /** Short, branching electrical discharges attached to the existing Poké Ball and card. */
 export class ElectricEffect implements PokemonRevealEffect {
     readonly root = new THREE.Group();
-    readonly state = { core: 0, discharge: 0, storm: 0, sparks: 0, card: 0, outline: 0, corners: 0, image: 0, flash: 0, fade: 1 };
+    readonly fillLightColor = new THREE.Color(0xffd400);
+    readonly fillLightPosition = new THREE.Vector3(0, -0.02, 0.40);
+    readonly state = { storm: 0, sparks: 0, flash: 0 };
+    readonly transformation: CardTransformation;
 
-    private readonly manifestation: CardManifestation;
+    get fillLightIntensity(): number {
+        const { core, morph, fade, cardImage } = this.transformation.state;
+        return (core * (1 - morph) * 2.4
+            + this.state.storm * (1 - morph * 0.7) * 0.6
+            + this.state.flash * (1 - morph * 0.7) * 1.1) * fade * (1 - cardImage);
+    }
+
     private readonly card: THREE.Mesh;
     private readonly mobile: boolean;
     private readonly maxArcs: number;
@@ -224,14 +164,10 @@ export class ElectricEffect implements PokemonRevealEffect {
     private readonly lightning: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
     private readonly lightningGeometry: THREE.BufferGeometry;
     private readonly lightningMaterial: THREE.ShaderMaterial;
-    private readonly core: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
-    private readonly glow: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
     private readonly sparks: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
     private readonly streaks: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
-    private readonly finalStreaks: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
     private readonly streakCount: number;
     private activeStreaks: number;
-    private readonly finalCenters: Float32Array;
     private readonly anchor = new THREE.Vector3();
     private finished = false;
     private randomState = 1;
@@ -246,8 +182,8 @@ export class ElectricEffect implements PokemonRevealEffect {
         this.activeArcs = this.maxArcs;
         this.refreshHz = mobile ? 12 : 20;
         this.root.name = 'ElectricEffect';
-        this.manifestation = new CardManifestation(card, true);
-        this.manifestation.setActive(false);
+        this.transformation = new CardTransformation(card, 'electric', mobile);
+        this.root.add(this.transformation.root);
 
         const pathCount = this.maxArcs * 3;
         const vertexCount = pathCount * VERTICES_PER_PATH;
@@ -293,55 +229,10 @@ export class ElectricEffect implements PokemonRevealEffect {
             depthTest: true,
             depthWrite: false,
             side: THREE.DoubleSide,
+            forceSinglePass: true,
         });
         this.lightning = new THREE.Mesh(this.lightningGeometry, this.lightningMaterial);
         this.root.add(this.lightning);
-
-        this.core = new THREE.Mesh(
-            new THREE.SphereGeometry(0.13, mobile ? 20 : 32, mobile ? 14 : 24),
-            new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: 0 }, uOpacity: { value: 0 },
-                    uGold: { value: new THREE.Color(0xffe788) },
-                    uHot: { value: new THREE.Color(0xffffff) },
-                    uRim: { value: new THREE.Color(0x703000) },
-                },
-                vertexShader: coreVertex,
-                fragmentShader: coreFragment,
-                transparent: true,
-                blending: THREE.NormalBlending,
-                depthTest: true,
-                depthWrite: false,
-                side: THREE.DoubleSide,
-                toneMapped: false,
-            }),
-        );
-        this.core.position.set(0, -0.07, 0.26);
-        this.root.add(this.core);
-
-        const sourceGlow = new THREE.PlaneGeometry(0.82, 0.82);
-        sourceGlow.translate(0, -0.05, 0.30);
-        const poolGlow = new THREE.PlaneGeometry(1.30, 1.30);
-        poolGlow.rotateX(-Math.PI / 2);
-        poolGlow.translate(0, -0.10, 0.14);
-        const glowGeometry = mergeGeometries([sourceGlow, poolGlow]);
-        sourceGlow.dispose();
-        poolGlow.dispose();
-        if (!glowGeometry) throw new Error('Electric source glow geometry unavailable');
-        this.glow = new THREE.Mesh(glowGeometry, new THREE.ShaderMaterial({
-            uniforms: {
-                uColor: { value: new THREE.Color(0xffc72b) },
-                uOpacity: { value: 0 },
-            },
-            vertexShader: glowVertex,
-            fragmentShader: glowFragment,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthTest: false,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        }));
-        this.root.add(this.glow);
 
         const sparkCount = mobile ? 40 : 80;
         const sparkGeometry = new THREE.BufferGeometry();
@@ -376,7 +267,6 @@ export class ElectricEffect implements PokemonRevealEffect {
         const streakGeometry = new THREE.BufferGeometry();
         const corners = new Float32Array(this.streakCount * 4 * 2);
         const streakData = new Float32Array(this.streakCount * 4 * 4);
-        this.finalCenters = new Float32Array(this.streakCount * 4 * 3);
         const streakIndices: number[] = [];
         for (let i = 0; i < this.streakCount; i++) {
             for (let corner = 0; corner < 4; corner++) {
@@ -394,12 +284,11 @@ export class ElectricEffect implements PokemonRevealEffect {
         streakGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.streakCount * 4 * 3), 3));
         streakGeometry.setAttribute('aCorner', new THREE.BufferAttribute(corners, 2));
         streakGeometry.setAttribute('aStreak', new THREE.BufferAttribute(streakData, 4));
-        streakGeometry.setAttribute('aFinalCenter', new THREE.BufferAttribute(this.finalCenters, 3).setUsage(THREE.DynamicDrawUsage));
         streakGeometry.setIndex(streakIndices);
         streakGeometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.65, 0), 4);
         this.streaks = new THREE.Mesh(streakGeometry, new THREE.ShaderMaterial({
             uniforms: {
-                uTime: { value: 0 }, uOpacity: { value: 0 }, uFinal: { value: 0 },
+                uTime: { value: 0 }, uOpacity: { value: 0 },
                 uOrange: { value: new THREE.Color(0xff9f1a) },
                 uWhite: { value: new THREE.Color(0xfffdeb) },
             },
@@ -410,33 +299,25 @@ export class ElectricEffect implements PokemonRevealEffect {
             depthTest: true,
             depthWrite: false,
             side: THREE.DoubleSide,
+            forceSinglePass: true,
         }));
         this.root.add(this.streaks);
-        this.finalStreaks = new THREE.Mesh(streakGeometry, this.streaks.material);
-        this.finalStreaks.renderOrder = 6;
-        this.finalStreaks.visible = false;
-        card.add(this.finalStreaks);
         this.root.visible = false;
     }
 
     setActive(active: boolean): void {
         this.root.visible = active;
-        this.manifestation.setActive(active);
-        this.finalStreaks.visible = active && this.finished;
+        this.transformation.setActive(active);
     }
 
     addToTimeline(timeline: gsap.core.Timeline): void {
-        timeline.to(this.state, { core: 1, duration: 0.4, ease: 'power2.out' }, 0);
-        timeline.to(this.state, { discharge: 1, sparks: 0.55, duration: 0.4, ease: 'power3.out' }, 0.4);
+        this.transformation.addToTimeline(timeline);
+        timeline.to(this.state, { sparks: 0.55, duration: 0.4, ease: 'power3.out' }, 0.4);
         timeline.to(this.state, { flash: 1, duration: 0.08, ease: 'power2.out' }, 0.45);
         timeline.to(this.state, { flash: 0, duration: 0.18 }, 0.53);
         timeline.to(this.state, { storm: 1, sparks: 1, duration: 0.65, ease: 'power2.out' }, 0.8);
-        timeline.to(this.state, { card: 1, outline: 1, duration: 0.7, ease: 'power2.inOut' }, 1.45);
-        timeline.to(this.state, { corners: 1, duration: 0.35, ease: 'power2.out' }, 1.70);
-        timeline.to(this.state, { image: 1, duration: 0.7, ease: 'power2.inOut' }, 2.15);
         timeline.to(this.state, { flash: 1, duration: 0.08, ease: 'power2.out' }, 2.48);
         timeline.to(this.state, { flash: 0, duration: 0.18 }, 2.56);
-        timeline.to(this.state, { fade: 0, duration: 0.65, ease: 'power2.inOut' }, 2.85);
     }
 
     private random(): number {
@@ -493,14 +374,14 @@ export class ElectricEffect implements PokemonRevealEffect {
         this.lastPulse = pulse;
         this.randomState = ((pulse + 1) * 0x9e3779b9) | 1;
         this.strengths.fill(0);
-        const arcCount = this.state.discharge > 0.01 ? this.activeArcs : 0;
+        const arcCount = this.transformation.state.energy > 0.01 ? this.activeArcs : 0;
         if (arcCount === 0) {
             this.lightningGeometry.getAttribute('aStrength').needsUpdate = true;
             return;
         }
         this.card.updateWorldMatrix(true, false);
         this.root.updateWorldMatrix(true, false);
-        const cardArcCount = this.state.card > 0.1 ? Math.min(arcCount - 1, this.mobile ? 2 : 4) : 0;
+        const cardArcCount = this.transformation.state.morph > 0.1 ? Math.min(arcCount - 1, this.mobile ? 2 : 4) : 0;
         for (let arc = 0; arc < arcCount; arc++) {
             let ex: number;
             let ey: number;
@@ -554,7 +435,8 @@ export class ElectricEffect implements PokemonRevealEffect {
     }
 
     update(time: number, viewportHeight: number): void {
-        if (!this.finished) {
+        const shared = this.transformation.state;
+        if (!this.finished && shared.cardImage < 0.999) {
             const wallTime = performance.now();
             if (this.lastWallTime > 0) {
                 const frameTime = wallTime - this.lastWallTime;
@@ -572,44 +454,31 @@ export class ElectricEffect implements PokemonRevealEffect {
             this.lastWallTime = wallTime;
             this.refreshLightning(time);
         }
+        const revealOpacity = this.finished ? 0 : shared.fade * (1 - shared.cardImage);
         this.lightningMaterial.uniforms.uTime.value = time;
-        this.lightningMaterial.uniforms.uOpacity.value = (this.finished ? 0 : 1) * this.state.discharge * this.state.fade
-            * (1 - this.state.card * 0.22 - this.state.image * 0.43) * (1 + this.state.flash * 0.45);
-        this.core.material.uniforms.uTime.value = time;
-        this.core.material.uniforms.uOpacity.value = this.state.core * this.state.fade * (1 - this.state.card);
-        this.core.scale.setScalar(0.72 + this.state.discharge * 0.35 + Math.sin(time * 11) * 0.055);
-        this.glow.material.uniforms.uOpacity.value = (this.state.core * 0.65 + this.state.discharge * 0.36)
-            * this.state.fade * (1 - this.state.card * 0.5);
+        this.lightningMaterial.uniforms.uOpacity.value = shared.energy * revealOpacity
+            * (1 - shared.morph * 0.22) * (1 + this.state.flash * 0.45);
+        this.lightning.visible = revealOpacity > 0.001;
         this.sparks.material.uniforms.uTime.value = time;
-        this.sparks.material.uniforms.uOpacity.value = this.state.sparks * this.state.fade;
+        this.sparks.material.uniforms.uOpacity.value = this.state.sparks * revealOpacity;
         this.sparks.material.uniforms.uViewportHeight.value = viewportHeight;
-        this.sparks.visible = !this.finished && this.state.sparks * this.state.fade > 0.001;
+        this.sparks.visible = this.state.sparks * revealOpacity > 0.001;
         this.streaks.material.uniforms.uTime.value = time;
-        this.streaks.material.uniforms.uOpacity.value = this.finished ? 0.82
-            : this.state.sparks * this.state.fade * (0.55 + this.state.storm * 0.45)
-                * (1 - this.state.card * 0.35 - this.state.image * 0.35);
-        this.streaks.visible = !this.finished && this.state.sparks * this.state.fade > 0.001;
-        this.manifestation.update(time, this.state.card,
-            this.finished ? 0 : this.state.outline * this.state.fade * (1 - this.state.image),
-            1 - this.state.image,
-            this.finished ? 0 : this.state.corners,
-            this.state.image,
-            this.finished ? 0 : this.state.card * this.state.fade * 0.28,
-            this.finished ? 1 : 0);
+        this.streaks.material.uniforms.uOpacity.value = this.state.sparks * revealOpacity
+            * (0.55 + this.state.storm * 0.45) * (1 - shared.morph * 0.35);
+        this.streaks.visible = this.state.sparks * revealOpacity > 0.001;
+        this.transformation.update(time, shared.morph * revealOpacity * 0.28);
     }
 
     reset(): void {
         this.finished = false;
-        Object.assign(this.state, { core: 0, discharge: 0, storm: 0, sparks: 0, card: 0, outline: 0, corners: 0, image: 0, flash: 0, fade: 1 });
+        this.transformation.reset();
+        Object.assign(this.state, { storm: 0, sparks: 0, flash: 0 });
         this.activeArcs = this.maxArcs;
         this.activeBranches = 2;
         this.activeStreaks = this.streakCount;
         this.streaks.geometry.setDrawRange(0, this.streakCount * 6);
-        this.streaks.material.uniforms.uFinal.value = 0;
-        this.finalStreaks.visible = false;
         this.lightning.visible = true;
-        this.core.visible = true;
-        this.glow.visible = true;
         this.refreshHz = this.mobile ? 12 : 20;
         this.lastPulse = -1;
         this.lastWallTime = 0;
@@ -619,38 +488,17 @@ export class ElectricEffect implements PokemonRevealEffect {
 
     finish(): void {
         this.finished = true;
+        this.transformation.finish();
         this.lightning.visible = false;
-        this.core.visible = false;
-        this.glow.visible = false;
         this.sparks.visible = false;
-        const residualCount = Math.min(6, this.activeStreaks);
-        this.streaks.geometry.setDrawRange(0, residualCount * 6);
-        this.streaks.material.uniforms.uFinal.value = 1;
         this.streaks.visible = false;
-        this.finalStreaks.visible = true;
-        for (let i = 0; i < residualCount; i++) {
-            const x = i % 2 === 0 ? -0.41 : 0.41;
-            const y = -0.40 + Math.floor(i / 2) * 0.40;
-            for (let corner = 0; corner < 4; corner++) {
-                const offset = (i * 4 + corner) * 3;
-                this.finalCenters[offset] = x;
-                this.finalCenters[offset + 1] = y;
-                this.finalCenters[offset + 2] = 0.06;
-            }
-        }
-        this.streaks.geometry.getAttribute('aFinalCenter').needsUpdate = true;
     }
 
     dispose(): void {
         this.root.removeFromParent();
-        this.manifestation.dispose();
-        this.finalStreaks.removeFromParent();
+        this.transformation.dispose();
         this.lightningGeometry.dispose();
         this.lightningMaterial.dispose();
-        this.core.geometry.dispose();
-        this.core.material.dispose();
-        this.glow.geometry.dispose();
-        this.glow.material.dispose();
         this.sparks.geometry.dispose();
         this.sparks.material.dispose();
         this.streaks.geometry.dispose();

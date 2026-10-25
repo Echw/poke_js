@@ -69,7 +69,8 @@ async function start() {
                 const applied = await loadCardImage(scene, selectedCard.image, isCurrent);
                 if (!isCurrent() || !applied) return;
                 status.textContent = '';
-                scene.play(selectedCard.types.includes('Lightning') ? 'electric' : 'psychic');
+                scene.play(selectedCard.types.includes('Lightning') ? 'electric'
+                    : selectedCard.types.includes('Grass') ? 'grass' : 'psychic');
             } catch (error) {
                 console.error('Could not load card.', error);
                 if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';

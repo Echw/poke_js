@@ -1,0 +1,276 @@
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CardManifestation } from './cardManifestation';
+
+export type RevealPalette = 'psychic' | 'electric' | 'grass';
+
+const coreVertex = /* glsl */ `
+    uniform float uTime;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    varying float vDisplacement;
+    void main() {
+        float wave = sin(position.x * 26.0 + uTime * 3.7)
+            * sin(position.y * 21.0 - uTime * 2.9)
+            * sin(position.z * 23.0 + uTime * 3.1);
+        vec3 pos = position + normal * wave * 0.014;
+        vec4 viewPosition = modelViewMatrix * vec4(pos, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vView = normalize(-viewPosition.xyz);
+        vDisplacement = wave;
+        gl_Position = projectionMatrix * viewPosition;
+    }
+`;
+
+// Psychic retains its original output path; Electric and Grass use linear colors.
+const coreFragment = /* glsl */ `
+    uniform float uOpacity;
+    uniform float uTime;
+    uniform vec3 uBase;
+    uniform vec3 uHot;
+    uniform vec3 uRim;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    varying float vDisplacement;
+    void main() {
+        float facing = max(0.0, dot(normalize(vNormal), normalize(vView)));
+        float fresnel = pow(1.0 - facing, 2.1);
+        float pulse = 0.88 + 0.12 * sin(uTime * 10.0);
+        #ifdef GRASS_SOURCE
+        vec3 color = mix(uBase, uHot, pow(facing, 0.40));
+        color += fresnel * uRim * 0.35 + vDisplacement * 0.035;
+        float softEdge = smoothstep(0.02, 0.72, facing);
+        gl_FragColor = vec4(color * pulse, uOpacity * softEdge * 0.76);
+        #else
+        vec3 color = mix(uBase, uHot, pow(facing, 0.9));
+        color += fresnel * uRim + vDisplacement * 0.06;
+        gl_FragColor = vec4(color * pulse, uOpacity);
+        #endif
+        #ifdef COLOR_MANAGED
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #endif
+    }
+`;
+
+const glowVertex = /* glsl */ `
+    #ifdef GRASS_GLOW
+    attribute float aLayer;
+    varying float vLayer;
+    #endif
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        #ifdef GRASS_GLOW
+        vLayer = aLayer;
+        #endif
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const glowFragment = /* glsl */ `
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    uniform float uTime;
+    uniform float uCenterSharpness;
+    uniform float uHaloSharpness;
+    uniform float uHaloStrength;
+    #ifdef GRASS_GLOW
+    varying float vLayer;
+    #endif
+    varying vec2 vUv;
+    void main() {
+        float d = length(vUv - 0.5) * 2.0;
+        float center = exp(-d * d * uCenterSharpness);
+        float halo = exp(-d * d * uHaloSharpness) * uHaloStrength;
+        float layer = 1.0;
+        #ifdef GRASS_GLOW
+        layer = vLayer;
+        layer *= 1.0 - smoothstep(0.58, 0.96, d);
+        if (vLayer < 0.5) {
+            vec2 p = (vUv - 0.5) * 2.0;
+            float warp = 0.27 * sin(p.y * 5.0 - uTime * 0.9);
+            float fold = sin((p.x + warp) * 10.0 + p.y * 3.0 + uTime * 1.4);
+            float fine = sin(p.x * 19.0 - p.y * 12.0 + uTime * 2.3);
+            float veil = smoothstep(-0.35, 0.70, fold)
+                * (0.53 + 0.47 * smoothstep(-0.5, 0.7, fine));
+            float bounds = 1.0 - smoothstep(0.60, 0.96, max(abs(p.x), abs(p.y)));
+            layer *= (0.18 + 0.82 * veil) * bounds;
+        }
+        #endif
+        gl_FragColor = vec4(uColor, (center + halo) * uOpacity * layer);
+        #ifdef COLOR_MANAGED
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #endif
+    }
+`;
+
+/** Shared energy source and orb-to-card animation; type VFX remain with each effect. */
+export class CardTransformation {
+    readonly root = new THREE.Group();
+    readonly state = { core: 0, energy: 0, morph: 0, silhouette: 0, corners: 0, cardImage: 0, fade: 1 };
+    private readonly manifestation: CardManifestation;
+    private readonly core: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
+    private readonly glows: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>[] = [];
+    private readonly fadeSourceWithCard: boolean;
+    private finished = false;
+
+    constructor(card: THREE.Mesh, palette: RevealPalette, mobile = false) {
+        this.fadeSourceWithCard = palette !== 'psychic';
+        this.manifestation = new CardManifestation(card, palette);
+        this.manifestation.setActive(false);
+        const psychic = palette === 'psychic';
+        const coreMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 }, uOpacity: { value: 0 },
+                uBase: { value: psychic ? new THREE.Vector3(0.55, 0.19, 0.91)
+                    : new THREE.Color(palette === 'electric' ? 0xffe788 : 0x71d645) },
+                uHot: { value: psychic ? new THREE.Vector3(1.0, 0.88, 1.0)
+                    : new THREE.Color(palette === 'grass' ? 0xfcfff2 : 0xffffff) },
+                uRim: { value: psychic ? new THREE.Vector3(0.33, 0.17, 0.48)
+                    : new THREE.Color(palette === 'electric' ? 0x703000 : 0x236818) },
+            },
+            vertexShader: coreVertex,
+            fragmentShader: coreFragment,
+            defines: psychic ? {} : palette === 'grass'
+                ? { COLOR_MANAGED: 1, GRASS_SOURCE: 1 } : { COLOR_MANAGED: 1 },
+            transparent: true,
+            blending: THREE.NormalBlending,
+            depthTest: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            forceSinglePass: !psychic,
+            ...(psychic ? {} : { toneMapped: false }),
+        });
+        this.core = new THREE.Mesh(
+            new THREE.SphereGeometry(0.13, mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
+        );
+        this.core.position.set(0, -0.07, 0.26);
+        this.root.add(this.core);
+
+        if (psychic) {
+            this.addPsychicGlow(-0.05, 0.30, 0.82, 0xefa4ff, false);
+            this.addPsychicGlow(-0.10, 0.14, 1.30, 0xa855f7, true);
+        } else {
+            const front = new THREE.PlaneGeometry(0.82, 0.82);
+            front.translate(0, -0.05, 0.30);
+            const pool = new THREE.PlaneGeometry(1.30, 1.30);
+            pool.rotateX(-Math.PI / 2);
+            pool.translate(0, -0.10, 0.14);
+            const layers: THREE.PlaneGeometry[] = [front, pool];
+            if (palette === 'grass') {
+                const atmosphere = new THREE.PlaneGeometry(2.30, 2.00);
+                atmosphere.translate(0, 0.45, 0.12);
+                layers.push(atmosphere);
+                for (const [index, layer] of layers.entries()) {
+                    layer.setAttribute('aLayer', new THREE.Float32BufferAttribute(
+                        new Array(layer.getAttribute('position').count).fill(index === 2 ? 0.23 : 1), 1));
+                }
+            }
+            const geometry = mergeGeometries(layers);
+            layers.forEach((layer) => layer.dispose());
+            if (!geometry) throw new Error('Energy source glow geometry unavailable');
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: new THREE.Color(palette === 'electric' ? 0xffc72b : 0x9ced5f) },
+                    uOpacity: { value: 0 }, uTime: { value: 0 },
+                    uCenterSharpness: { value: 8 },
+                    uHaloSharpness: { value: 2.2 },
+                    uHaloStrength: { value: 0.56 },
+                },
+                vertexShader: glowVertex,
+                fragmentShader: glowFragment,
+                defines: palette === 'grass' ? { COLOR_MANAGED: 1, GRASS_GLOW: 1 }
+                    : { COLOR_MANAGED: 1 },
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthTest: false,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                forceSinglePass: true,
+            });
+            const glow = new THREE.Mesh(geometry, material);
+            this.root.add(glow);
+            this.glows.push(glow);
+        }
+    }
+
+    private addPsychicGlow(y: number, z: number, size: number, color: THREE.ColorRepresentation, horizontal: boolean): void {
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uColor: { value: new THREE.Color(color).convertLinearToSRGB() },
+                uOpacity: { value: 0 },
+                uCenterSharpness: { value: 11 },
+                uHaloSharpness: { value: 3.5 },
+                uHaloStrength: { value: 0.28 },
+            },
+            vertexShader: glowVertex,
+            fragmentShader: glowFragment,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+        const glow = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material);
+        glow.position.set(0, y, z);
+        if (horizontal) glow.rotation.x = -Math.PI / 2;
+        this.root.add(glow);
+        this.glows.push(glow);
+    }
+
+    addToTimeline(timeline: gsap.core.Timeline): void {
+        timeline.to(this.state, { core: 1, duration: 0.4, ease: 'power2.out' }, 0);
+        timeline.to(this.state, { energy: 1, duration: 0.4, ease: 'power3.out' }, 0.4);
+        timeline.to(this.state, { morph: 1, silhouette: 1, duration: 0.70, ease: 'power2.inOut' }, 1.45);
+        timeline.to(this.state, { corners: 1, duration: 0.35, ease: 'power2.out' }, 1.70);
+        timeline.to(this.state, { cardImage: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
+        timeline.to(this.state, { fade: 0, duration: 0.65, ease: 'power2.inOut' }, 2.85);
+    }
+
+    update(time: number, edgeActivity = 0): void {
+        const { core, energy, morph, silhouette, corners, cardImage, fade } = this.state;
+        const sourceOpacity = fade * (this.fadeSourceWithCard ? 1 - cardImage : 1);
+        this.core.scale.setScalar(0.72 + energy * 0.35 + Math.sin(time * 11) * 0.055);
+        this.core.material.uniforms.uTime.value = time;
+        this.core.material.uniforms.uOpacity.value = core * sourceOpacity * (1 - morph);
+        for (const glow of this.glows) {
+            if (glow.material.uniforms.uTime) glow.material.uniforms.uTime.value = time;
+            glow.material.uniforms.uOpacity.value = (core * 0.65 + energy * 0.36)
+                * sourceOpacity * (1 - morph * 0.5);
+        }
+        this.manifestation.update(time, morph,
+            this.finished ? 0 : silhouette * fade * (1 - cardImage),
+            1 - cardImage, this.finished ? 0 : corners, cardImage,
+            this.finished ? 0 : edgeActivity);
+    }
+
+    setActive(active: boolean): void {
+        this.root.visible = active && !this.finished;
+        this.manifestation.setActive(active);
+    }
+
+    reset(): void {
+        this.finished = false;
+        this.root.visible = true;
+        Object.assign(this.state, { core: 0, energy: 0, morph: 0, silhouette: 0, corners: 0, cardImage: 0, fade: 1 });
+        this.update(0);
+    }
+
+    finish(): void {
+        this.finished = true;
+        this.root.visible = false;
+    }
+
+    dispose(): void {
+        this.root.removeFromParent();
+        this.manifestation.dispose();
+        this.core.geometry.dispose();
+        this.core.material.dispose();
+        for (const glow of this.glows) {
+            glow.geometry.dispose();
+            glow.material.dispose();
+        }
+    }
+}

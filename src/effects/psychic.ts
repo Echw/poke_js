@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CardManifestation } from './cardManifestation';
+import { CardTransformation } from './cardTransformation';
 import type { PokemonRevealEffect } from './types';
 
 const TAU = Math.PI * 2;
@@ -75,59 +75,11 @@ const ribbonFragment = /* glsl */ `
     }
 `;
 
-const coreVertex = /* glsl */ `
-    uniform float uTime;
-    varying vec3 vNormal;
-    varying vec3 vView;
-    varying float vDisplacement;
-
-    void main() {
-        float wave = sin(position.x * 26.0 + uTime * 3.7)
-            * sin(position.y * 21.0 - uTime * 2.9)
-            * sin(position.z * 23.0 + uTime * 3.1);
-        vec3 pos = position + normal * wave * 0.014;
-        vec4 viewPosition = modelViewMatrix * vec4(pos, 1.0);
-        vNormal = normalize(normalMatrix * normal);
-        vView = normalize(-viewPosition.xyz);
-        vDisplacement = wave;
-        gl_Position = projectionMatrix * viewPosition;
-    }
-`;
-
-const coreFragment = /* glsl */ `
-    uniform float uOpacity;
-    uniform float uTime;
-    varying vec3 vNormal;
-    varying vec3 vView;
-    varying float vDisplacement;
-
-    void main() {
-        float facing = max(0.0, dot(normalize(vNormal), normalize(vView)));
-        float fresnel = pow(1.0 - facing, 2.1);
-        float pulse = 0.88 + 0.12 * sin(uTime * 10.0);
-        vec3 color = mix(vec3(0.55, 0.19, 0.91), vec3(1.0, 0.88, 1.0), pow(facing, 0.9));
-        color += fresnel * vec3(0.33, 0.17, 0.48) + vDisplacement * 0.06;
-        gl_FragColor = vec4(color * pulse, uOpacity);
-    }
-`;
-
 const glowVertex = /* glsl */ `
     varying vec2 vUv;
     void main() {
         vUv = uv;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-`;
-
-const glowFragment = /* glsl */ `
-    uniform vec3 uColor;
-    uniform float uOpacity;
-    varying vec2 vUv;
-    void main() {
-        float d = length(vUv - 0.5) * 2.0;
-        float center = exp(-d * d * 11.0);
-        float halo = exp(-d * d * 3.5) * 0.28;
-        gl_FragColor = vec4(uColor, (center + halo) * uOpacity);
     }
 `;
 
@@ -234,32 +186,29 @@ function makeStrip(segments: number, acrossSegments: number): THREE.BufferGeomet
 /** Procedural, texture-free Psychic VFX attached to the Poké Ball opening. */
 export class PsychicEffect implements PokemonRevealEffect {
     readonly root = new THREE.Group();
-    readonly state = { core: 0, burst: 0, vortex: 0, rings: 0, particles: 0, morph: 0, silhouette: 0, cardImage: 0, corners: 0, fade: 1 };
+    readonly fillLightColor = new THREE.Color(0xe879f9);
+    readonly fillLightPosition = new THREE.Vector3(0, 0.3, 0.25);
+    readonly state = { vortex: 0, rings: 0, particles: 0 };
+    readonly transformation: CardTransformation;
     private readonly dynamicRoot = new THREE.Group();
     private readonly geometries: THREE.BufferGeometry[] = [];
     private readonly materials: THREE.Material[] = [];
     private readonly shaderMaterials: THREE.ShaderMaterial[] = [];
-    private readonly core: THREE.Mesh;
     private readonly crystals: THREE.InstancedMesh;
     private readonly crystalMaterial: THREE.MeshBasicMaterial;
     private readonly crystalDummy = new THREE.Object3D();
-    private readonly manifestation: CardManifestation;
-    private finished = false;
+
+    get fillLightIntensity(): number {
+        const { energy, fade } = this.transformation.state;
+        return energy * fade * 3.0;
+    }
 
     constructor(card: THREE.Mesh, mobile = false) {
         this.root.name = 'PsychicEffect';
         this.root.add(this.dynamicRoot);
-        this.manifestation = new CardManifestation(card);
+        this.transformation = new CardTransformation(card, 'psychic', mobile);
+        this.root.add(this.transformation.root);
         this.addPool();
-        const coreMaterial = this.shader({ uTime: { value: 0 }, uOpacity: { value: 0 } }, coreVertex, coreFragment, false, true);
-        const coreGeometry = new THREE.SphereGeometry(0.13, mobile ? 20 : 32, mobile ? 14 : 24);
-        this.core = new THREE.Mesh(coreGeometry, coreMaterial);
-        this.core.position.set(0, -0.07, 0.26);
-        this.dynamicRoot.add(this.core);
-        this.geometries.push(coreGeometry);
-
-        this.addGlow(-0.05, 0.30, 0.82, 0xefa4ff, false);
-        this.addGlow(-0.10, 0.14, 1.30, 0xa855f7, true);
         this.addAura(0.74, 0.16, 1.96, 0xa855f7, 0);
         if (!mobile) this.addAura(0.88, 0.32, 1.82, 0xff4ddb, 2.1);
 
@@ -324,9 +273,10 @@ export class PsychicEffect implements PokemonRevealEffect {
 
     /** Updates all faceted shards in one instanced draw call. */
     private updateCrystals(time: number): void {
-        const strength = this.state.morph * this.state.particles;
-        this.crystals.visible = strength > 0.001 && this.state.fade > 0.001;
-        this.crystalMaterial.opacity = strength * this.state.fade * 0.88;
+        const shared = this.transformation.state;
+        const strength = shared.morph * this.state.particles;
+        this.crystals.visible = strength > 0.001 && shared.fade > 0.001;
+        this.crystalMaterial.opacity = strength * shared.fade * 0.88;
         for (let i = 0; i < this.crystals.count; i++) {
             const phase = i * 2.3999632297;
             const side = i % 2 === 0 ? -1 : 1;
@@ -342,7 +292,7 @@ export class PsychicEffect implements PokemonRevealEffect {
                 0.35 + phase * 0.18 + time * 0.5,
                 phase * 0.45 + time * 0.5,
             );
-            const size = Math.min(1, strength * 1.8) * this.state.fade;
+            const size = Math.min(1, strength * 1.8) * shared.fade;
             this.crystalDummy.scale.set(
                 (0.034 + i % 3 * 0.009) * size,
                 (0.065 + i % 4 * 0.011) * size,
@@ -381,16 +331,6 @@ export class PsychicEffect implements PokemonRevealEffect {
         this.geometries.push(geometry);
     }
 
-    private addGlow(y: number, z: number, size: number, color: THREE.ColorRepresentation, horizontal: boolean): void {
-        const geometry = new THREE.PlaneGeometry(size, size);
-        const material = this.shader({ uColor: { value: new THREE.Color(color).convertLinearToSRGB() }, uOpacity: { value: 0 } }, glowVertex, glowFragment, true);
-        const glow = new THREE.Mesh(geometry, material);
-        glow.position.set(0, y, z);
-        if (horizontal) glow.rotation.x = -Math.PI / 2;
-        this.dynamicRoot.add(glow);
-        this.geometries.push(geometry);
-    }
-
     private addAura(y: number, z: number, size: number, color: THREE.ColorRepresentation, phase: number): void {
         const geometry = new THREE.PlaneGeometry(size, size);
         const material = this.shader({
@@ -413,23 +353,18 @@ export class PsychicEffect implements PokemonRevealEffect {
 
     setActive(active: boolean): void {
         this.root.visible = active;
-        this.manifestation.setActive(active);
+        this.transformation.setActive(active);
     }
 
     addToTimeline(timeline: gsap.core.Timeline): void {
-        timeline.to(this.state, { core: 1, duration: 0.4, ease: 'power2.out' }, 0);
-        timeline.to(this.state, { burst: 1, duration: 0.4, ease: 'power3.out' }, 0.4);
+        this.transformation.addToTimeline(timeline);
         timeline.to(this.state, { vortex: 0.28, particles: 0.25, duration: 0.4, ease: 'power2.out' }, 0.4);
         timeline.to(this.state, { vortex: 1, rings: 1, particles: 1, duration: 0.65, ease: 'power2.out' }, 0.8);
-        timeline.to(this.state, { morph: 1, silhouette: 1, duration: 0.70, ease: 'power2.inOut' }, 1.45);
-        timeline.to(this.state, { corners: 1, duration: 0.35, ease: 'power2.out' }, 1.70);
-        timeline.to(this.state, { cardImage: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
-        timeline.to(this.state, { fade: 0, duration: 0.65, ease: 'power2.inOut' }, 2.85);
     }
 
     update(time: number, viewportHeight: number): void {
-        const intensity = this.state.fade;
-        this.core.scale.setScalar(0.72 + this.state.burst * 0.35 + Math.sin(time * 11) * 0.055);
+        const shared = this.transformation.state;
+        const intensity = shared.fade;
         for (const material of this.shaderMaterials) {
             const { uniforms } = material;
             if (uniforms.uTime) uniforms.uTime.value = time;
@@ -437,50 +372,38 @@ export class PsychicEffect implements PokemonRevealEffect {
             if (uniforms.uKind) {
                 const ring = uniforms.uKind.value > 0.5;
                 const cardReadability = 1
-                    - this.state.morph * (ring ? 0.16 : 0.26)
-                    - this.state.cardImage * (ring ? 0.35 : 0.48);
-                uniforms.uOpacity.value = (ring ? this.state.rings : this.state.burst)
+                    - shared.morph * (ring ? 0.16 : 0.26)
+                    - shared.cardImage * (ring ? 0.35 : 0.48);
+                uniforms.uOpacity.value = (ring ? this.state.rings : shared.energy)
                     * intensity * cardReadability * (ring ? 1.08 : 0.96);
                 uniforms.uReveal.value = ring ? this.state.rings : this.state.vortex;
             } else if (uniforms.uPool) {
-                uniforms.uOpacity.value = (this.state.core * 0.66 + this.state.burst * 0.43) * intensity;
+                uniforms.uOpacity.value = (shared.core * 0.66 + shared.energy * 0.43) * intensity;
             } else if (uniforms.uAura) {
                 uniforms.uOpacity.value = this.state.vortex * intensity;
-            } else if (uniforms.uColor) {
-                uniforms.uOpacity.value = (this.state.core * 0.65 + this.state.burst * 0.36)
-                    * intensity * (1 - this.state.morph * 0.5);
             } else if (uniforms.uViewportHeight) {
                 uniforms.uOpacity.value = this.state.particles * intensity;
-            } else {
-                uniforms.uOpacity.value = this.state.core * intensity * (1 - this.state.morph);
             }
         }
-        this.manifestation.update(
-            time,
-            this.state.morph,
-            this.finished ? 0 : this.state.silhouette * intensity * (1 - this.state.cardImage),
-            1 - this.state.cardImage,
-            this.finished ? 0 : this.state.corners,
-            this.state.cardImage,
-        );
+        this.transformation.update(time);
         this.updateCrystals(time);
     }
 
     reset(): void {
-        this.finished = false;
         this.dynamicRoot.visible = true;
-        Object.assign(this.state, { core: 0, burst: 0, vortex: 0, rings: 0, particles: 0, morph: 0, silhouette: 0, cardImage: 0, corners: 0, fade: 1 });
+        this.transformation.reset();
+        Object.assign(this.state, { vortex: 0, rings: 0, particles: 0 });
         this.update(0, 800);
     }
 
     finish(): void {
-        this.finished = true;
+        this.transformation.finish();
         this.dynamicRoot.visible = false;
     }
 
     dispose(): void {
         this.root.removeFromParent();
-        this.manifestation.dispose();
+        this.transformation.dispose();
         this.geometries.forEach((geometry) => geometry.dispose());
         this.materials.forEach((material) => material.dispose());
     }
