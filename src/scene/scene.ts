@@ -10,6 +10,8 @@ import { PsychicEffect } from '../effects/psychic';
 import { ElectricEffect } from '../effects/electric';
 import { GrassEffect } from '../effects/grass';
 import { FireEffect } from '../effects/fire';
+import { WaterEffect } from '../effects/water';
+import { CARD_REVEAL_TIMING } from '../effects/cardTransformation';
 import type { PokemonRevealEffect, RevealType } from '../effects/types';
 import { createCardGeometry } from './card';
 
@@ -120,6 +122,7 @@ export const sceneController = {
         let electric: ElectricEffect | undefined;
         let grass: GrassEffect | undefined;
         let fire: FireEffect | undefined;
+        let water: WaterEffect | undefined;
         let activeEffect: PokemonRevealEffect = psychic;
 
         let disposed = false;
@@ -128,6 +131,10 @@ export const sceneController = {
         const render = () => {
             activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
             revealFill.intensity = activeEffect.fillLightIntensity;
+            if (activeEffect === water) {
+                glb.scene.updateWorldMatrix(true, false);
+                revealFill.position.copy(activeEffect.fillLightPosition).applyMatrix4(glb.scene.matrixWorld);
+            }
             renderer.render(scene, camera);
         };
         const startRender = () => {
@@ -148,14 +155,15 @@ export const sceneController = {
 
         const createTimeline = (reveal: RevealType) => {
             const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'electric' || reveal === 'fire' ? 0.8 : 1.90;
+            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' ? 0.8 : 1.90;
             next.to(lid.rotation, { x: lidClosedX - degrees(45), duration: openingDuration, ease: 'power1.out' }, 0);
             next.to(glb.scene.rotation, { x: degrees(4), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
-            next.to(card.position, { y: 0.40, z: 0.50, duration: 0.70, ease: 'power2.out' }, 1.45);
-            next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: 2.15, ease: 'power1.out' }, 1.35);
-            next.to(card.scale, { x: 1.18, y: 1.18, z: 1.18, duration: 0.70, ease: 'power2.out' }, 1.45);
-            next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
+            next.to(card.position, { y: reveal === 'water' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
+            const cardScale = reveal === 'water' ? 0.94 : 1.18;
+            next.to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.image);
             return next;
         };
         let timeline = createTimeline('psychic');
@@ -171,6 +179,34 @@ export const sceneController = {
         render();
 
         return {
+            // Used by the development preview only; no debug handles in production.
+            debug: import.meta.env.DEV ? {
+                seek(time: number) {
+                    if (disposed || !Number.isFinite(time)) return;
+                    timeline.pause(0, true);
+                    activeEffect.reset();
+                    timeline.time(THREE.MathUtils.clamp(time, 0, timeline.duration()), true);
+                    if (time >= timeline.duration()) activeEffect.finish();
+                    stopRender();
+                },
+                /** Resume the development preview, optionally in slow motion. */
+                resume(rate = 1) {
+                    if (disposed || !Number.isFinite(rate) || rate <= 0 || timeline.time() >= timeline.duration()) return;
+                    timeline.timeScale(rate).play();
+                    startRender();
+                },
+                snapshot() {
+                    return {
+                        time: timeline.time(), duration: timeline.duration(), running, disposed,
+                        effect: activeEffect.root.name,
+                        memory: { ...renderer.info.memory }, calls: renderer.info.render.calls,
+                        programs: renderer.info.programs?.length ?? 0,
+                        cardScale: card.scale.x,
+                    };
+                },
+                model: glb.scene,
+                card,
+            } : undefined,
             async setCardImage(image: string) {
                 const request = ++cardImageRequest;
                 const texture = await loadCardTexture(image);
@@ -200,9 +236,13 @@ export const sceneController = {
                     fire.root.traverse((object) => { object.renderOrder = 2; });
                     glb.scene.add(fire.root);
                 }
+                if (reveal === 'water' && !water) {
+                    water = new WaterEffect(card, skyEnvironment, window.innerWidth < 700);
+                    glb.scene.add(water.root);
+                }
                 activeEffect.setActive(false);
                 activeEffect = reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
-                    : reveal === 'fire' ? fire! : psychic;
+                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : psychic;
                 revealFill.color.copy(activeEffect.fillLightColor);
                 revealFill.position.copy(activeEffect.fillLightPosition);
                 activeEffect.setActive(true);
@@ -222,12 +262,14 @@ export const sceneController = {
                 }
             },
             stop() {
+                if (disposed) return;
                 timeline.pause();
                 stopRender();
             },
             dispose() {
                 if (disposed) return;
                 disposed = true;
+                running = false;
                 cardImageRequest++;
                 timeline.kill();
                 renderer.setAnimationLoop(null);
@@ -236,6 +278,7 @@ export const sceneController = {
                 electric?.dispose();
                 grass?.dispose();
                 fire?.dispose();
+                water?.dispose();
                 card.geometry.dispose();
                 if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
                 backTexture.dispose();

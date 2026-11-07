@@ -2,7 +2,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water';
+
+/** Shared handoff times, in seconds from the Ball opening. */
+export const CARD_REVEAL_TIMING = {
+    rotation: 1.35, morph: 1.45, corners: 1.70, image: 2.15,
+    fade: 2.85, complete: 3.5, morphDuration: 0.70,
+} as const;
 
 const coreVertex = /* glsl */ `
     uniform float uTime;
@@ -47,6 +53,9 @@ const coreFragment = /* glsl */ `
         #ifdef FIRE_SOURCE
         color = mix(uRim, uBase, smoothstep(0.0, 0.80, facing));
         color = mix(color, uHot, pow(facing, 8.0) * 0.90);
+        #endif
+        #ifdef WATER_SOURCE
+        color = mix(uBase, uHot * 1.8, pow(facing, 3.0));
         #endif
         gl_FragColor = vec4(color * pulse, uOpacity);
         #endif
@@ -137,39 +146,42 @@ export class CardTransformation {
             uniforms: {
                 uTime: { value: 0 }, uOpacity: { value: 0 },
                 uBase: { value: psychic ? new THREE.Vector3(0.55, 0.19, 0.91)
-                    : new THREE.Color(palette === 'electric' ? 0xffe788 : palette === 'fire' ? 0xff8a16 : 0x71d645) },
+                    : new THREE.Color(palette === 'water' ? 0x188cff : palette === 'electric' ? 0xffe788 : palette === 'fire' ? 0xff8a16 : 0x71d645) },
                 uHot: { value: psychic ? new THREE.Vector3(1.0, 0.88, 1.0)
-                    : new THREE.Color(palette === 'grass' ? 0xfcfff2 : palette === 'fire' ? 0xfff0b0 : 0xffffff) },
+                    : new THREE.Color(palette === 'water' ? 0xddfaff : palette === 'grass' ? 0xfcfff2 : palette === 'fire' ? 0xfff0b0 : 0xffffff) },
                 uRim: { value: psychic ? new THREE.Vector3(0.33, 0.17, 0.48)
-                    : new THREE.Color(palette === 'electric' ? 0x703000 : palette === 'fire' ? 0xd71908 : 0x236818) },
+                    : new THREE.Color(palette === 'water' ? 0x004ba8 : palette === 'electric' ? 0x703000 : palette === 'fire' ? 0xd71908 : 0x236818) },
             },
             vertexShader: coreVertex,
             fragmentShader: coreFragment,
             defines: psychic ? {} : palette === 'grass'
                 ? { COLOR_MANAGED: 1, GRASS_SOURCE: 1 }
-                : palette === 'fire' ? { COLOR_MANAGED: 1, FIRE_SOURCE: 1 } : { COLOR_MANAGED: 1 },
+                : palette === 'fire' ? { COLOR_MANAGED: 1, FIRE_SOURCE: 1 }
+                    : palette === 'water' ? { COLOR_MANAGED: 1, WATER_SOURCE: 1 } : { COLOR_MANAGED: 1 },
             transparent: true,
             blending: THREE.NormalBlending,
             depthTest: true,
             depthWrite: false,
-            side: palette === 'fire' ? THREE.FrontSide : THREE.DoubleSide,
+            side: palette === 'fire' || palette === 'water' ? THREE.FrontSide : THREE.DoubleSide,
             forceSinglePass: !psychic,
             ...(psychic ? {} : { toneMapped: false }),
         });
         this.core = new THREE.Mesh(
-            new THREE.SphereGeometry(palette === 'fire' ? 0.085 : 0.13,
+            new THREE.SphereGeometry(palette === 'water' ? 0.065 : palette === 'fire' ? 0.085 : 0.13,
                 mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
         );
-        this.core.position.set(0, -0.07, palette === 'fire' ? 0.43 : 0.26);
+        this.core.position.set(0, -0.07, palette === 'water' ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
+        // Transparent water is rendered first; the source still tests the Ball's depth.
+        if (palette === 'water') this.core.renderOrder = 3;
         this.root.add(this.core);
 
         if (psychic) {
             this.addPsychicGlow(-0.05, 0.30, 0.82, 0xefa4ff, false);
             this.addPsychicGlow(-0.10, 0.14, 1.30, 0xa855f7, true);
         } else {
-            const front = new THREE.PlaneGeometry(0.82, 0.82);
-            front.translate(0, -0.05, 0.30);
-            const pool = new THREE.PlaneGeometry(1.30, 1.30);
+            const front = new THREE.PlaneGeometry(palette === 'water' ? 0.58 : 0.82, palette === 'water' ? 0.58 : 0.82);
+            front.translate(0, -0.05, palette === 'water' ? 0.39 : 0.30);
+            const pool = new THREE.PlaneGeometry(palette === 'water' ? 1.05 : 1.30, palette === 'water' ? 1.05 : 1.30);
             pool.rotateX(-Math.PI / 2);
             pool.translate(0, -0.10, 0.14);
             const layers: THREE.PlaneGeometry[] = [front, pool];
@@ -187,12 +199,12 @@ export class CardTransformation {
             if (!geometry) throw new Error('Energy source glow geometry unavailable');
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uColor: { value: new THREE.Color(palette === 'electric' ? 0xffc72b : palette === 'fire' ? 0xff4a08 : 0x9ced5f) },
+                    uColor: { value: new THREE.Color(palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffc72b : palette === 'fire' ? 0xff4a08 : 0x9ced5f) },
                     ...(palette === 'fire' ? { uFireWarm: { value: new THREE.Color(0xff8a16) } } : {}),
                     uOpacity: { value: 0 }, uTime: { value: 0 },
                     uCenterSharpness: { value: palette === 'fire' ? 16 : 8 },
                     uHaloSharpness: { value: palette === 'fire' ? 3.2 : 2.2 },
-                    uHaloStrength: { value: palette === 'fire' ? 0.28 : 0.56 },
+                    uHaloStrength: { value: palette === 'water' ? 0.38 : palette === 'fire' ? 0.28 : 0.56 },
                 },
                 vertexShader: glowVertex,
                 fragmentShader: glowFragment,
@@ -201,12 +213,13 @@ export class CardTransformation {
                         : { COLOR_MANAGED: 1 },
                 transparent: true,
                 blending: THREE.AdditiveBlending,
-                depthTest: false,
+                depthTest: palette === 'water',
                 depthWrite: false,
                 side: THREE.DoubleSide,
                 forceSinglePass: true,
             });
             const glow = new THREE.Mesh(geometry, material);
+            if (palette === 'water') glow.renderOrder = 3.3;
             this.root.add(glow);
             this.glows.push(glow);
         }
@@ -236,13 +249,14 @@ export class CardTransformation {
         this.glows.push(glow);
     }
 
+    /** Materialize every card on the same timeline, independent of its element. */
     addToTimeline(timeline: gsap.core.Timeline): void {
         timeline.to(this.state, { core: 1, duration: 0.4, ease: 'power2.out' }, 0);
         timeline.to(this.state, { energy: 1, duration: 0.4, ease: 'power3.out' }, 0.4);
-        timeline.to(this.state, { morph: 1, silhouette: 1, duration: 0.70, ease: 'power2.inOut' }, 1.45);
-        timeline.to(this.state, { corners: 1, duration: 0.35, ease: 'power2.out' }, 1.70);
-        timeline.to(this.state, { cardImage: 1, duration: 0.70, ease: 'power2.inOut' }, 2.15);
-        timeline.to(this.state, { fade: 0, duration: 0.65, ease: 'power2.inOut' }, 2.85);
+        timeline.to(this.state, { morph: 1, silhouette: 1, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.morph);
+        timeline.to(this.state, { corners: 1, duration: 0.35, ease: 'power2.out' }, CARD_REVEAL_TIMING.corners);
+        timeline.to(this.state, { cardImage: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.image);
+        timeline.to(this.state, { fade: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.fade, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.fade);
     }
 
     update(time: number, edgeActivity = 0): void {

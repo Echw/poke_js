@@ -16,6 +16,12 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 }
 
 async function start() {
+    const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
+    const requestedReveal = previewParams?.get('reveal');
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water'] as const)
+        .find((type) => type === requestedReveal);
+    const previewTime = previewParams?.get('time');
+    const initialName = previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -25,30 +31,34 @@ async function start() {
     if (!submitButton) throw new Error('Summon button not found');
 
     let cardRequestId = 0;
-    const initialCard = fetchCard().catch((error) => {
-        console.error('Could not fetch Abra.', error);
+    const initialCard = fetchCard(previewReveal === 'water' ? 'Squirtle' : undefined).catch((error) => {
+        console.error(`Could not fetch ${initialName}.`, error);
         return undefined;
     });
 
     try {
         const scene = await sceneController.initScene(canvas);
-        scene.play();
+        scene.play(previewReveal);
+        if (import.meta.env.DEV) {
+            Object.assign(window, { __pokemonReveal: scene });
+            if (previewTime !== null && previewTime !== undefined) scene.debug?.seek(Number(previewTime));
+        }
         submitButton.disabled = false;
-        status.textContent = 'Loading Abra…';
+        status.textContent = `Loading ${initialName}…`;
 
         void (async () => {
             const selectedCard = await initialCard;
             if (cardRequestId !== 0) return;
             if (!selectedCard) {
-                status.textContent = 'Could not load Abra. Search to try again.';
+                status.textContent = `Could not load ${initialName}. Search to try again.`;
                 return;
             }
             try {
                 const applied = await loadCardImage(scene, selectedCard.image, () => cardRequestId === 0);
                 if (cardRequestId === 0 && applied) status.textContent = '';
             } catch (error) {
-                console.error('Could not load Abra image.', error);
-                if (cardRequestId === 0) status.textContent = 'Could not load Abra. Search to try again.';
+                console.error(`Could not load ${initialName} image.`, error);
+                if (cardRequestId === 0) status.textContent = `Could not load ${initialName}. Search to try again.`;
             }
         })();
 
@@ -71,7 +81,8 @@ async function start() {
                 status.textContent = '';
                 scene.play(selectedCard.types.includes('Lightning') ? 'electric'
                     : selectedCard.types.includes('Grass') ? 'grass'
-                        : selectedCard.types.includes('Fire') ? 'fire' : 'psychic');
+                        : selectedCard.types.includes('Fire') ? 'fire'
+                            : selectedCard.types.includes('Water') ? 'water' : 'psychic');
             } catch (error) {
                 console.error('Could not load card.', error);
                 if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';
