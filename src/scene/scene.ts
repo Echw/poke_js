@@ -9,6 +9,7 @@ import skyEnvironmentUrl from '../assets/sky/NightSkyHDRI006_4K_HDR.exr?url';
 import { PsychicEffect } from '../effects/psychic';
 import { ElectricEffect } from '../effects/electric';
 import { GrassEffect } from '../effects/grass';
+import { FireEffect } from '../effects/fire';
 import type { PokemonRevealEffect, RevealType } from '../effects/types';
 import { createCardGeometry } from './card';
 
@@ -118,6 +119,7 @@ export const sceneController = {
         glb.scene.add(psychic.root);
         let electric: ElectricEffect | undefined;
         let grass: GrassEffect | undefined;
+        let fire: FireEffect | undefined;
         let activeEffect: PokemonRevealEffect = psychic;
 
         let disposed = false;
@@ -141,11 +143,12 @@ export const sceneController = {
         const finishRender = () => {
             activeEffect.finish();
             stopRender();
+            render();
         };
 
         const createTimeline = (reveal: RevealType) => {
             const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'electric' ? 0.8 : 1.90;
+            const openingDuration = reveal === 'electric' || reveal === 'fire' ? 0.8 : 1.90;
             next.to(lid.rotation, { x: lidClosedX - degrees(45), duration: openingDuration, ease: 'power1.out' }, 0);
             next.to(glb.scene.rotation, { x: degrees(4), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
@@ -192,8 +195,14 @@ export const sceneController = {
                     grass.root.traverse((object) => { object.renderOrder = 2; });
                     glb.scene.add(grass.root);
                 }
+                if (reveal === 'fire' && !fire) {
+                    fire = new FireEffect(card, window.innerWidth < 700);
+                    fire.root.traverse((object) => { object.renderOrder = 2; });
+                    glb.scene.add(fire.root);
+                }
                 activeEffect.setActive(false);
-                activeEffect = reveal === 'electric' ? electric! : reveal === 'grass' ? grass! : psychic;
+                activeEffect = reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
+                    : reveal === 'fire' ? fire! : psychic;
                 revealFill.color.copy(activeEffect.fillLightColor);
                 revealFill.position.copy(activeEffect.fillLightPosition);
                 activeEffect.setActive(true);
@@ -226,6 +235,7 @@ export const sceneController = {
                 psychic.dispose();
                 electric?.dispose();
                 grass?.dispose();
+                fire?.dispose();
                 card.geometry.dispose();
                 if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
                 backTexture.dispose();

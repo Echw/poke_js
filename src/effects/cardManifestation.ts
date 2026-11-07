@@ -47,6 +47,9 @@ const fragmentShader = /* glsl */ `
         #ifdef GRASS
         alpha *= 0.76;
         #endif
+        #ifdef FIRE
+        alpha *= 0.55;
+        #endif
         #ifdef ELECTRIC
         float crawlA = pow(max(0.0, sin((p.x * 1.25 - p.y * 0.85) * 21.0 - uTime * 17.0)), 12.0);
         float crawlB = pow(max(0.0, sin((p.x * 0.65 + p.y * 1.40) * 17.0 + uTime * 13.0)), 15.0);
@@ -57,8 +60,11 @@ const fragmentShader = /* glsl */ `
         #else
         vec3 color = mix(uBase, uHot, clamp(edge + corners, 0.0, 1.0));
         #endif
+        #ifdef FIRE
+        color = mix(uBase, uHot, clamp(pow(edge, 5.0) * 0.40 + corners * 0.22, 0.0, 1.0));
+        #endif
         gl_FragColor = vec4(color, alpha);
-        #if defined(ELECTRIC) || defined(GRASS)
+        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE)
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #endif
@@ -71,7 +77,7 @@ export class CardManifestation {
     readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
     private readonly glow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
 
-    constructor(card: THREE.Mesh, palette: 'psychic' | 'electric' | 'grass' = 'psychic') {
+    constructor(card: THREE.Mesh, palette: 'psychic' | 'electric' | 'grass' | 'fire' = 'psychic') {
         const electric = palette === 'electric';
         card.add(this.root);
         const geometry = new THREE.PlaneGeometry(1.20, 1.40);
@@ -80,14 +86,14 @@ export class CardManifestation {
                 uTime: { value: 0 }, uMorph: { value: 0 }, uOpacity: { value: 0 },
                 uFill: { value: 1 }, uCorners: { value: 0 },
                 uBase: { value: palette === 'psychic' ? new THREE.Vector3(0.76, 0.35, 1.0)
-                    : new THREE.Color(palette === 'electric' ? 0xffb800 : 0x66c91c) },
+                    : new THREE.Color(palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
                 uHot: { value: palette === 'psychic' ? new THREE.Vector3(1.0, 0.89, 1.0)
-                    : new THREE.Color(palette === 'electric' ? 0xfffdeb : 0xeaffad) },
+                    : new THREE.Color(palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
                 ...(electric ? {
                     uElectricActivity: { value: 0 },
                 } : {}),
             },
-            defines: electric ? { ELECTRIC: 1 } : palette === 'grass' ? { GRASS: 1 } : {},
+            defines: electric ? { ELECTRIC: 1 } : palette === 'grass' ? { GRASS: 1 } : palette === 'fire' ? { FIRE: 1 } : {},
             vertexShader,
             fragmentShader,
             transparent: true,
@@ -111,15 +117,18 @@ export class CardManifestation {
         context.beginPath();
         context.roundRect(47, 46, 162, 228, 12);
         context.strokeStyle = electric ? 'rgba(255, 212, 0, 0.72)' : palette === 'grass'
-            ? 'rgba(146, 238, 60, 0.54)' : 'rgba(207, 103, 255, 0.72)';
-        context.shadowColor = electric ? '#ffb800' : palette === 'grass' ? '#82db35' : '#d86cff';
-        context.shadowBlur = palette === 'grass' ? 20 : 26;
+            ? 'rgba(146, 238, 60, 0.54)' : palette === 'fire'
+                ? 'rgba(255, 74, 8, 0.70)' : 'rgba(207, 103, 255, 0.72)';
+        context.shadowColor = electric ? '#ffb800' : palette === 'grass' ? '#82db35'
+            : palette === 'fire' ? '#d71908' : '#d86cff';
+        context.shadowBlur = palette === 'grass' ? 20 : palette === 'fire' ? 22 : 26;
         context.lineWidth = palette === 'grass' ? 7 : 9;
         context.stroke();
         context.shadowBlur = 9;
         context.strokeStyle = electric ? 'rgba(255, 253, 235, 0.92)' : palette === 'grass'
-            ? 'rgba(237, 255, 190, 0.76)' : 'rgba(255, 233, 255, 0.92)';
-        context.lineWidth = palette === 'grass' ? 2 : 3;
+            ? 'rgba(237, 255, 190, 0.76)' : palette === 'fire'
+                ? 'rgba(255, 184, 75, 0.90)' : 'rgba(255, 233, 255, 0.92)';
+        context.lineWidth = palette === 'grass' || palette === 'fire' ? 2 : 3;
         context.stroke();
         const glowTexture = new THREE.CanvasTexture(canvas);
         glowTexture.colorSpace = THREE.SRGBColorSpace;

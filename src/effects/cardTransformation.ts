@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire';
 
 const coreVertex = /* glsl */ `
     uniform float uTime;
@@ -44,6 +44,10 @@ const coreFragment = /* glsl */ `
         #else
         vec3 color = mix(uBase, uHot, pow(facing, 0.9));
         color += fresnel * uRim + vDisplacement * 0.06;
+        #ifdef FIRE_SOURCE
+        color = mix(uRim, uBase, smoothstep(0.0, 0.80, facing));
+        color = mix(color, uHot, pow(facing, 8.0) * 0.90);
+        #endif
         gl_FragColor = vec4(color * pulse, uOpacity);
         #endif
         #ifdef COLOR_MANAGED
@@ -75,6 +79,9 @@ const glowFragment = /* glsl */ `
     uniform float uCenterSharpness;
     uniform float uHaloSharpness;
     uniform float uHaloStrength;
+    #ifdef FIRE_GLOW
+    uniform vec3 uFireWarm;
+    #endif
     #ifdef GRASS_GLOW
     varying float vLayer;
     #endif
@@ -98,7 +105,12 @@ const glowFragment = /* glsl */ `
             layer *= (0.18 + 0.82 * veil) * bounds;
         }
         #endif
-        gl_FragColor = vec4(uColor, (center + halo) * uOpacity * layer);
+        vec3 color = uColor;
+        #ifdef FIRE_GLOW
+        color = mix(uColor, uFireWarm, center * center * 0.65);
+        layer *= 0.72;
+        #endif
+        gl_FragColor = vec4(color, (center + halo) * uOpacity * layer);
         #ifdef COLOR_MANAGED
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -125,28 +137,30 @@ export class CardTransformation {
             uniforms: {
                 uTime: { value: 0 }, uOpacity: { value: 0 },
                 uBase: { value: psychic ? new THREE.Vector3(0.55, 0.19, 0.91)
-                    : new THREE.Color(palette === 'electric' ? 0xffe788 : 0x71d645) },
+                    : new THREE.Color(palette === 'electric' ? 0xffe788 : palette === 'fire' ? 0xff8a16 : 0x71d645) },
                 uHot: { value: psychic ? new THREE.Vector3(1.0, 0.88, 1.0)
-                    : new THREE.Color(palette === 'grass' ? 0xfcfff2 : 0xffffff) },
+                    : new THREE.Color(palette === 'grass' ? 0xfcfff2 : palette === 'fire' ? 0xfff0b0 : 0xffffff) },
                 uRim: { value: psychic ? new THREE.Vector3(0.33, 0.17, 0.48)
-                    : new THREE.Color(palette === 'electric' ? 0x703000 : 0x236818) },
+                    : new THREE.Color(palette === 'electric' ? 0x703000 : palette === 'fire' ? 0xd71908 : 0x236818) },
             },
             vertexShader: coreVertex,
             fragmentShader: coreFragment,
             defines: psychic ? {} : palette === 'grass'
-                ? { COLOR_MANAGED: 1, GRASS_SOURCE: 1 } : { COLOR_MANAGED: 1 },
+                ? { COLOR_MANAGED: 1, GRASS_SOURCE: 1 }
+                : palette === 'fire' ? { COLOR_MANAGED: 1, FIRE_SOURCE: 1 } : { COLOR_MANAGED: 1 },
             transparent: true,
             blending: THREE.NormalBlending,
             depthTest: true,
             depthWrite: false,
-            side: THREE.DoubleSide,
+            side: palette === 'fire' ? THREE.FrontSide : THREE.DoubleSide,
             forceSinglePass: !psychic,
             ...(psychic ? {} : { toneMapped: false }),
         });
         this.core = new THREE.Mesh(
-            new THREE.SphereGeometry(0.13, mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
+            new THREE.SphereGeometry(palette === 'fire' ? 0.085 : 0.13,
+                mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
         );
-        this.core.position.set(0, -0.07, 0.26);
+        this.core.position.set(0, -0.07, palette === 'fire' ? 0.43 : 0.26);
         this.root.add(this.core);
 
         if (psychic) {
@@ -173,16 +187,18 @@ export class CardTransformation {
             if (!geometry) throw new Error('Energy source glow geometry unavailable');
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uColor: { value: new THREE.Color(palette === 'electric' ? 0xffc72b : 0x9ced5f) },
+                    uColor: { value: new THREE.Color(palette === 'electric' ? 0xffc72b : palette === 'fire' ? 0xff4a08 : 0x9ced5f) },
+                    ...(palette === 'fire' ? { uFireWarm: { value: new THREE.Color(0xff8a16) } } : {}),
                     uOpacity: { value: 0 }, uTime: { value: 0 },
-                    uCenterSharpness: { value: 8 },
-                    uHaloSharpness: { value: 2.2 },
-                    uHaloStrength: { value: 0.56 },
+                    uCenterSharpness: { value: palette === 'fire' ? 16 : 8 },
+                    uHaloSharpness: { value: palette === 'fire' ? 3.2 : 2.2 },
+                    uHaloStrength: { value: palette === 'fire' ? 0.28 : 0.56 },
                 },
                 vertexShader: glowVertex,
                 fragmentShader: glowFragment,
                 defines: palette === 'grass' ? { COLOR_MANAGED: 1, GRASS_GLOW: 1 }
-                    : { COLOR_MANAGED: 1 },
+                    : palette === 'fire' ? { COLOR_MANAGED: 1, FIRE_GLOW: 1 }
+                        : { COLOR_MANAGED: 1 },
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthTest: false,

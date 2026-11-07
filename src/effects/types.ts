@@ -1,6 +1,6 @@
 import type { Color, Group, Vector3 } from 'three';
 
-export type RevealType = 'psychic' | 'electric' | 'grass';
+export type RevealType = 'psychic' | 'electric' | 'grass' | 'fire';
 
 /** A reveal effect owns its GPU resources; the scene owns playback and rendering. */
 export interface PokemonRevealEffect {

@@ -70,7 +70,8 @@ async function start() {
                 if (!isCurrent() || !applied) return;
                 status.textContent = '';
                 scene.play(selectedCard.types.includes('Lightning') ? 'electric'
-                    : selectedCard.types.includes('Grass') ? 'grass' : 'psychic');
+                    : selectedCard.types.includes('Grass') ? 'grass'
+                        : selectedCard.types.includes('Fire') ? 'fire' : 'psychic');
             } catch (error) {
                 console.error('Could not load card.', error);
                 if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';
