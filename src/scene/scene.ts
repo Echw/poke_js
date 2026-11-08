@@ -13,6 +13,7 @@ import { FireEffect } from '../effects/fire';
 import { WaterEffect } from '../effects/water';
 import { IceEffect } from '../effects/ice';
 import { FightingEffect } from '../effects/fighting';
+import { PoisonEffect } from '../effects/poison';
 import { GpuSmokeMist } from '../effects/gpuSmokeMist';
 import { GpuTimer } from '../effects/gpuTimer';
 import { SmokeBoundarySampler, SMOKE_OPENING } from '../effects/smokeBoundary';
@@ -138,9 +139,10 @@ export const sceneController = {
         let water: WaterEffect | undefined;
         let ice: IceEffect | undefined;
         let fighting: FightingEffect | undefined;
-        let fogEffect: IceEffect | FightingEffect | undefined;
+        let poison: PoisonEffect | undefined;
+        let fogEffect: IceEffect | FightingEffect | PoisonEffect | undefined;
         const preparedFog = new Set<PokemonRevealEffect>();
-        const fogVolumes = new Map<'ice' | 'fighting', GpuSmokeMist>();
+        const fogVolumes = new Map<'ice' | 'fighting' | 'poison', GpuSmokeMist>();
         let mist: GpuSmokeMist | undefined;
         let depthTarget: THREE.WebGLRenderTarget | undefined;
         const depthMaterial = new THREE.MeshDepthMaterial();
@@ -258,13 +260,13 @@ export const sceneController = {
 
         const createTimeline = (reveal: RevealType) => {
             const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' ? SMOKE_OPENING.duration : 1.90;
+            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? SMOKE_OPENING.duration : 1.90;
             next.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             next.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
-            next.to(card.position, { y: reveal === 'water' || reveal === 'ice' || reveal === 'fighting' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to(card.position, { y: reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
-            const cardScale = reveal === 'water' || reveal === 'ice' || reveal === 'fighting' ? 0.94 : 1.18;
+            const cardScale = reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? 0.94 : 1.18;
             next.to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: reveal === 'fighting' ? 'power4.out' : 'power2.inOut' }, CARD_REVEAL_TIMING.image);
             return next;
@@ -330,6 +332,7 @@ export const sceneController = {
                         frameGpu: frameTimer.stats(),
                         renderedFrames,
                         fighting: fighting?.getDebugInfo(),
+                        poison: poison?.getDebugInfo(),
                         mist: mist ? { visible:mist.mesh.visible,kind:'gpu',...mist.getDebugInfo() } : undefined,
                     };
                 },
@@ -406,16 +409,20 @@ export const sceneController = {
                     ice = new IceEffect(card, skyEnvironment, renderer, window.innerWidth < 700);
                     glb.scene.add(ice.root);
                 }
+                if (reveal === 'poison' && !poison) {
+                    poison = new PoisonEffect(card, skyEnvironment, window.innerWidth < 700);
+                    glb.scene.add(poison.root);
+                }
                 if (reveal === 'fighting' && !fighting) {
                     fighting = new FightingEffect(card, window.innerWidth < 700);
                     glb.scene.add(fighting.root);
                 }
-                if ((reveal === 'ice' || reveal === 'fighting') && !fogVolumes.has(reveal)) {
+                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'poison') && !fogVolumes.has(reveal)) {
                     mist = new GpuSmokeMist(renderer,camera,smokeBoundary,window.innerWidth<700,
                         import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay', reveal);
                     fogVolumes.set(reveal, mist);
                 }
-                if ((reveal === 'ice' || reveal === 'fighting') && !depthTarget) {
+                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'poison') && !depthTarget) {
                     // Preserve the root-space opening coordinates while following the actual bottom node.
                     mistSource = new THREE.Object3D();
                     mistSource.name = 'BowlMistSource';
@@ -432,9 +439,9 @@ export const sceneController = {
                 }
                 activeEffect.setActive(false);
                 activeEffect = reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
-                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'fighting' ? fighting! : psychic;
-                fogEffect = reveal === 'ice' ? ice : reveal === 'fighting' ? fighting : undefined;
-                mist = reveal === 'ice' || reveal === 'fighting' ? fogVolumes.get(reveal) : undefined;
+                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'fighting' ? fighting! : reveal === 'poison' ? poison! : psychic;
+                fogEffect = reveal === 'ice' ? ice : reveal === 'fighting' ? fighting : reveal === 'poison' ? poison : undefined;
+                mist = reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? fogVolumes.get(reveal) : undefined;
                 revealFill.color.copy(activeEffect.fillLightColor);
                 revealFill.position.copy(activeEffect.fillLightPosition);
                 activeEffect.setActive(true);
@@ -508,6 +515,7 @@ export const sceneController = {
                 water?.dispose();
                 ice?.dispose();
                 fighting?.dispose();
+                poison?.dispose();
                 fogVolumes.forEach(volume => volume.dispose());
                 depthTarget?.dispose();
                 depthMaterials.forEach(material => material.dispose());

@@ -173,7 +173,7 @@ try{
             WebGL2RenderingContext.prototype.drawElements=function(...args){window.iceQA.lastDraw=performance.now();return draw.apply(this,args)};
             const worker=window.Worker;window.Worker=class extends worker{constructor(url,options){super(url,options);if(String(url).includes('smokeReplayWorker'))window.iceQA.smokeWorkers++;}};
         });
-        const cards=[['Squirtle','Water',7],['Bulbasaur','Grass',1],['Charmander','Fire',4],['Pikachu','Lightning',25],['Abra','Psychic',63],['Glaceon','Water',471],['Machop','Fighting',66]];
+        const cards=[['Squirtle','Water',7],['Bulbasaur','Grass',1],['Charmander','Fire',4],['Pikachu','Lightning',25],['Abra','Psychic',63],['Glaceon','Water',471],['Machop','Fighting',66],['Koffing','Grass',109]];
         await page.route('https://api.tcgdex.net/**',route=>{
             const url=new URL(route.request().url()),query=url.searchParams.get('name');
             const key=query||url.pathname.split('/').pop().replace('mock-','');
@@ -183,7 +183,7 @@ try{
         });
         const artwork=await readFile('public/textures/glaceon-preview.webp');
         await page.route('https://fixture.invalid/**',route=>route.fulfill({contentType:'image/webp',body:artwork}));
-        const loaded=[];page.on('request',request=>{if(/\/(ice|fighting)-(desktop|mobile)[^/]*\.bin(?:\?.*)?$/.test(request.url()))loaded.push(request.url())});
+        const loaded=[];page.on('request',request=>{if(/\/(ice|fighting|poison)-(desktop|mobile)[^/]*\.bin(?:\?.*)?$/.test(request.url()))loaded.push(request.url())});
         await page.goto(process.env.ICE_PRODUCTION_URL||'http://127.0.0.1:5175/');
         await page.waitForFunction(()=>document.querySelector('#summon-status').textContent==='');
         assert.equal(await page.evaluate(()=>typeof window.__pokemonReveal),'undefined');
@@ -191,17 +191,17 @@ try{
             await page.locator('#pokemon-name').fill(name);await page.locator('#pokemon-search button').click();
             await page.waitForFunction(()=>!document.querySelector('#pokemon-search button').disabled&&document.querySelector('#summon-status').textContent==='',null,{timeout:120000});
             assert.equal(await page.locator('aside').count(),0);
-            if(name==='Glaceon'||name==='Machop'){
+            if(name==='Glaceon'||name==='Machop'||name==='Koffing'){
                 const begin=await page.evaluate(()=>performance.now());
                 // Capturing a moving canvas can stall headless presentation. Observe
                 // the end of actual drawing first, then save the production result.
                 await page.waitForFunction(start=>performance.now()-start>1200&&performance.now()-window.iceQA.lastDraw>180,begin,{timeout:15000});
-                const counters=await page.evaluate(()=>window.iceQA);assert.equal(counters.solverShaders,0);assert.equal(counters.queries,0);assert.equal(counters.smokeWorkers,name==='Glaceon'?1:2);
+                const counters=await page.evaluate(()=>window.iceQA);assert.equal(counters.solverShaders,0);assert.equal(counters.queries,0);assert.equal(counters.smokeWorkers,name==='Glaceon'?1:name==='Machop'?2:3);
                 report.scenarios.push({production:counters,playbackMs:counters.lastDraw-begin,assetRequests:loaded.length});
                 console.log('Production',JSON.stringify(report.scenarios.at(-1)));
                 assert.ok(counters.lastDraw-begin>3000&&counters.lastDraw-begin<3900);
-                assert.equal(loaded.length,name==='Glaceon'?1:2);assert.match(loaded.at(-1),new RegExp(`${name==='Glaceon'?'ice':'fighting'}-${mobile?'mobile':'desktop'}-[\\w-]+\\.bin$`));
-                await page.screenshot({path:path.join(out,`production-${name==='Glaceon'?'ice':'fighting'}.png`)});
+                assert.equal(loaded.length,name==='Glaceon'?1:name==='Machop'?2:3);assert.match(loaded.at(-1),new RegExp(`${name==='Glaceon'?'ice':name==='Machop'?'fighting':'poison'}-${mobile?'mobile':'desktop'}-[\\w-]+\\.bin$`));
+                await page.screenshot({path:path.join(out,`production-${name==='Glaceon'?'ice':name==='Machop'?'fighting':'poison'}.png`)});
             }
         }
         await context.close();

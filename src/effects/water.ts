@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardTransformation, CARD_REVEAL_TIMING } from './cardTransformation';
 import type { PokemonRevealEffect } from './types';
+import { createPoolGeometry, liquidReflectionGLSL, liquidCardMaskGLSL } from './liquidSurface';
 
 const TIMING = {
     growStart: 0.4, growEnd: 1.0,
@@ -332,12 +333,7 @@ const surfaceFragment = /* glsl */ `
         float facing = clamp(dot(normalWorld, view), 0.0, 1.0);
         float rim = pow(1.0 - facing, 3.5);
         float fresnel = 0.0204 + 0.9796 * pow(1.0 - facing, 5.0);
-        vec3 reflected = reflect(-view, normalWorld);
-        vec2 envUv = vec2(atan(reflected.z, reflected.x) * 0.159154943 + 0.5,
-            asin(clamp(reflected.y, -1.0, 1.0)) * 0.318309886 + 0.5);
-        vec3 environment = texture2D(uEnvironment, envUv).rgb;
-        // Compress the sky's broad hot spots; compact moving glints carry the whites.
-        environment /= 1.0 + environment * 0.65;
+        ${liquidReflectionGLSL}
         vec3 key = normalize(vec3(-0.65, 0.95, 1.25));
         vec3 side = normalize(vec3(0.85, 0.35, 1.0));
         float broad = pow(max(dot(reflected, key), 0.0), 24.0);
@@ -380,10 +376,7 @@ const surfaceFragment = /* glsl */ `
         alpha = 0.95 * vVisibility;
         #endif
         // Ball occlusion uses actual depth; the card mask handles its opacity tween.
-        vec2 cardQ = abs(vCardPosition.xy) - vec2(0.31, 0.46);
-        float cardDistance = length(max(cardQ, 0.0)) + min(max(cardQ.x, cardQ.y), 0.0) - 0.04;
-        float cardMask = 1.0 - smoothstep(-0.012, 0.018, cardDistance);
-        alpha *= 1.0 - cardMask * uCardImage;
+        ${liquidCardMaskGLSL}
         gl_FragColor = vec4(color, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -618,35 +611,6 @@ function createStreamGeometry(mobile: boolean): THREE.BufferGeometry {
     layers.forEach((layer) => layer.dispose());
     if (!geometry) throw new Error('Water stream geometry unavailable');
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.6, 0.38), 1.9);
-    return geometry;
-}
-
-/** Radial subdivisions supply real vertices for local ripples and raised crests. */
-function createPoolGeometry(mobile: boolean): THREE.BufferGeometry {
-    const rings = mobile ? 20 : 32;
-    const segments = mobile ? 48 : 72;
-    const positions: number[] = [0, 0, 0];
-    const indices: number[] = [];
-    for (let ring = 1; ring <= rings; ring++) {
-        for (let segment = 0; segment <= segments; segment++) {
-            const angle = segment / segments * Math.PI * 2;
-            const radius = ring / rings * 0.88;
-            positions.push(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
-        }
-    }
-    for (let segment = 0; segment < segments; segment++) indices.push(0, segment + 2, segment + 1);
-    for (let ring = 1; ring < rings; ring++) {
-        const inner = 1 + (ring - 1) * (segments + 1);
-        const outer = inner + segments + 1;
-        for (let segment = 0; segment < segments; segment++) {
-            const a = inner + segment, b = outer + segment;
-            indices.push(a, b + 1, b, a, a + 1, b + 1);
-        }
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setIndex(indices);
-    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0.94);
     return geometry;
 }
 

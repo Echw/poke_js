@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { CLIP_MAGIC, CLIP_PREFIX_BYTES, parseSmokeClip, restoreSmokeChunk } from '../src/effects/smokeClipFormat.ts';
 import { REPLAY_CONTRACT } from '../src/effects/smokeReplayTypes.ts';
-import { smokeSourceFrame } from '../src/effects/smokeTiming.ts';
 
 const bytesOf = values => Buffer.from(values.buffer, values.byteOffset, values.byteLength);
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -32,7 +31,7 @@ export function createSmokeClip(metadata, name, layout, bits = 8) {
                 else if(bits===8)for(let i=0;i<pixels;i++)out[i]=lut[input[i]];
                 else for(let i=0,j=0;i<pixels;i+=2){const a=lut[input[i]],b=lut[input[i+1]];out[j++]=a&255;out[j++]=(a>>8)|((b&15)<<4);out[j++]=b>>4;}
                 const decoded=bits===16?input:Uint16Array.from(input,value=>header.encoding.palette[lut[value]]);
-                restored.push({densitySHA256:sha(bytesOf(decoded)),sourceSHA256:sha(bytesOf(input)),sourceFrame:smokeSourceFrame(frameIndex+f)});
+                restored.push({densitySHA256:sha(bytesOf(decoded)),sourceSHA256:sha(bytesOf(input)),sourceFrame:metadata.sourceFrameIndices[frameIndex+f]});
             }
             // Reverse traversal preserves the preceding absolute packed state.
             const words=new Uint32Array(packed.buffer,packed.byteOffset,packed.length/4),stride=packedStride/4;

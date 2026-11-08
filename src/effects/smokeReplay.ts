@@ -7,6 +7,8 @@ import desktopClipUrl from '../assets/mist-replay/ice-desktop.bin?url';
 import mobileClipUrl from '../assets/mist-replay/ice-mobile.bin?url';
 import fightingDesktopUrl from '../assets/mist-replay/fighting-desktop.bin?url';
 import fightingMobileUrl from '../assets/mist-replay/fighting-mobile.bin?url';
+import poisonDesktopUrl from '../assets/mist-replay/poison-desktop.bin?url';
+import poisonMobileUrl from '../assets/mist-replay/poison-mobile.bin?url';
 import profileSource from './smokeProfile.ts?raw';
 import type { ReplayProfile, SmokeReplayManifest } from './smokeReplayTypes';
 import simulationSource from './gpuSmokeSimulation.ts?raw';
@@ -106,7 +108,8 @@ export class SmokeReplay {
         if (new Uint8Array(new Uint16Array([1]).buffer)[0] !== 1) throw new Error('Replay requires little-endian FP16 support');
         this.manifest = await new Promise<SmokeReplayManifest>((resolve, reject) => {
             this.initialization = { resolve, reject };
-            const url = this.variant === 'fighting' ? (this.mobile ? fightingMobileUrl : fightingDesktopUrl)
+            const url = this.variant === 'poison' ? (this.mobile ? poisonMobileUrl : poisonDesktopUrl)
+                : this.variant === 'fighting' ? (this.mobile ? fightingMobileUrl : fightingDesktopUrl)
                 : (this.mobile ? mobileClipUrl : desktopClipUrl);
             this.worker.postMessage({ id: 0, kind: 'init', url: new URL(url, location.href).href });
         });

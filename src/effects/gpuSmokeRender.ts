@@ -36,6 +36,17 @@ export const gpuVolumeFragment = /* glsl */ `
     uniform vec3 uBoundsMin,uBoundsMax;
     uniform float uSteps,uDensityScale,uFade;
     uniform float uIceLight;
+    #ifdef POISON_SMOKE
+    uniform float uPoisonTime;
+    float poisonWisps(vec3 p) {
+        // Continuous world-space detail advects upwards with the simulated volume.
+        p.y-=uPoisonTime*0.25;
+        p.x+=sin(p.y*5.0+uPoisonTime*0.55)*0.12;
+        float n=sin(p.x*12.0+sin(p.z*9.0))*sin(p.y*11.0-p.z*5.0);
+        n+=0.42*sin(p.x*25.0+p.y*19.0)*sin(p.z*22.0-p.y*16.0);
+        return 0.32+0.68*smoothstep(-0.65,0.55,n);
+    }
+    #endif
     uniform int uLightSteps,uDebugView,uVelocityN,uVelocityTiles;
     uniform float uVelocityH;
     uniform int uOptimized,uLinear,uBrickN,uBrickTiles;
@@ -84,6 +95,9 @@ export const gpuVolumeFragment = /* glsl */ `
                 }
             }
             vec3 p=ro+rd*t;vec2 sampleField=field(p);float d=sampleField.r;
+            #ifdef POISON_SMOKE
+            if(d>0.004)d*=poisonWisps(p);
+            #endif
             if(d>0.004){
                 vec3 color;
                 if(uDebugView==1)color=vec3(0.72);
@@ -94,7 +108,10 @@ export const gpuVolumeFragment = /* glsl */ `
                     float bowlGlow=exp(-dot(source,source)*5.0)*uIceLight;
                     float lighting=illumination(p,light);
                     // Pale, milky frost keeps cooler shadows without a saturated blue veil.
-                    #ifdef FIGHTING_SMOKE
+                    #ifdef POISON_SMOKE
+                    color=vec3(0.018,0.001,0.028)+vec3(0.20,0.005,0.32)*lighting
+                        +vec3(0.42,0.015,0.56)*bowlGlow;
+                    #elif defined(FIGHTING_SMOKE)
                     float impactGlow=exp(-dot(source,source)*19.0)*uIceLight;
                     color=vec3(0.035,0.001,0.005)+vec3(0.34,0.006,0.012)*lighting
                         +vec3(0.65,0.045,0.003)*impactGlow;

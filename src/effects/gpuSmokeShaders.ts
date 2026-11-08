@@ -101,7 +101,17 @@ export const simulationFragment = /* glsl */ `
     vec3 trace(vec3 p,float dt){return traceWithVelocity(p,dt,velocityAt(p));}
     float source(vec3 p){
         vec3 q=(uWorldToBowl*vec4(p,1)).xyz;
-        #ifdef FIGHTING_SMOKE
+        #ifdef POISON_SMOKE
+        float band=smoothstep(-0.28,-0.19,q.y)*(1.0-smoothstep(-0.10,-0.02,q.y));
+        float sides=exp(-dot(q.xz-vec2(-0.62,-0.10),q.xz-vec2(-0.62,-0.10))*30.0)
+            +0.88*exp(-dot(q.xz-vec2(0.59,-0.16),q.xz-vec2(0.59,-0.16))*32.0)
+            +0.35*exp(-dot(q.xz-vec2(0.02,-0.48),q.xz-vec2(0.02,-0.48))*30.0);
+        float middle=exp(-dot(q.xz-vec2(0.02,0.12),q.xz-vec2(0.02,0.12))*34.0)
+            *(1.0-smoothstep(1.45,1.7,uTime))*0.16;
+        float breathe=0.72+0.20*sin(uTime*7.0+q.x*13.0)+0.08*sin(uTime*13.0-q.z*19.0);
+        return (sides+middle)*band*breathe*smoothstep(0.02,0.3,uOpening)
+            *(0.35+0.65*smoothstep(0.25,0.85,uTime))*(1.0-smoothstep(1.45,2.1,uTime))*uEmission;
+        #elif defined(FIGHTING_SMOKE)
         // Bowl-local lobes leave an irregular clear corridor in front of the card.
         float band=smoothstep(-0.32,-0.20,q.y)*(1.0-smoothstep(-0.06,0.08,q.y));
         float lobes=exp(-dot(q.xz-vec2(-0.28,-0.06),q.xz-vec2(-0.28,-0.06))*20.0)
@@ -176,7 +186,7 @@ export const simulationFragment = /* glsl */ `
                 float rho=densityAt(face);
                 vec3 q=(uWorldToBowl*vec4(face,1)).xyz;
                 float exposed=max(smoothstep(0.86,1.08,length(q.xz)),smoothstep(0.015,0.16,q.y));
-                #ifdef FIGHTING_SMOKE
+                #if defined(FIGHTING_SMOKE) || defined(POISON_SMOKE)
                 force.y+=rho*uFallSpeed*(0.35+exposed*1.1);
                 #else
                 force.y-=rho*uFallSpeed*(0.15+exposed*2.2);
@@ -185,7 +195,21 @@ export const simulationFragment = /* glsl */ `
                 force+=eddy*uTurbulence*min(rho,1.0)*0.85;
                 vec3 radial=vec3(q.x,0,q.z)/max(length(q.xz),0.2);
                 vec3 target=mat3(uBowlToWorld)*(radial*(0.14+uSpread*0.3)+vec3(0,0.28,0));
-                #ifdef FIGHTING_SMOKE
+                #ifdef POISON_SMOKE
+                // Up through the mouth first; horizontal drift then carries both plumes beyond the rim.
+                float aboveRim=smoothstep(-0.08,0.18,q.y);
+                float sideDirection=q.x/sqrt(q.x*q.x+0.025);
+                target=mat3(uBowlToWorld)*vec3(sideDirection*(0.45+uSpread*0.60*aboveRim),1.05,-0.08);
+                vec3 outward=mat3(uBowlToWorld)*vec3(sideDirection*uSpread*1.6,0.0,-0.035);
+                force+=outward*min(rho,1.0)*aboveRim*(1.0-smoothstep(1.05,1.45,abs(q.x)));
+                // Counter-rotating air rolls carry the jets outwards below their centres,
+                // upwards at the sides and back in at the top, rather than only pressurising the centre.
+                vec2 roll=vec2(abs(q.x)-0.22,q.y-0.90);
+                vec3 rollForce=vec3(-sideDirection*roll.y,roll.x,0.0);
+                float rollEnvelope=exp(-dot(roll,roll)*1.2-q.z*q.z*2.0)*aboveRim
+                    *smoothstep(0.2,0.7,uTime)*(1.0-smoothstep(2.1,2.8,uTime));
+                force+=mat3(uBowlToWorld)*rollForce*rollEnvelope*uSpread*4.4;
+                #elif defined(FIGHTING_SMOKE)
                 float pulse=exp(-pow((uTime-0.64)/0.095,2.0))*0.7+exp(-pow((uTime-1.02)/0.13,2.0));
                 target=mat3(uBowlToWorld)*(radial*(0.25+uSpread*pulse)+vec3(0,0.65+1.35*pulse,0));
                 #endif
@@ -251,6 +275,10 @@ export const simulationFragment = /* glsl */ `
             value=clamp(value,minimum,maximum);
             value*=exp(-uDt*(0.16/max(uFadeTime,0.1)+sponge(p)*12.0));
             vec3 local=(uWorldToBowl*vec4(p,1)).xyz;
+            #ifdef POISON_SMOKE
+            // The upper wisps dissipate before reaching the UI or the volume boundary.
+            value*=exp(-uDt*smoothstep(0.75,1.50,local.y)*7.0);
+            #endif
             float feed=source(p);
             if(feed>0.0001)value+=feed*uDt*1.4*sourceDetail(local+vec3(0.08,-0.10,0.06)*uTime);
             outColor=vec4(clamp(value,0.0,3.0),0,0,1);

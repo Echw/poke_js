@@ -59,6 +59,10 @@ const fragmentShader = /* glsl */ `
         float folds=sin(p.y*19.0-uTime*4.0+sin(p.x*13.0+uTime*2.0));
         alpha=uOpacity*(fill*uFill*(0.42+0.18*folds*folds)+edge*1.35+halo*0.26+corners*0.9);
         #endif
+        #ifdef POISON
+        float folds=sin(p.y*15.0-uTime*2.0+sin(p.x*17.0+uTime));
+        alpha=uOpacity*(fill*uFill*(0.14+0.12*folds*folds)+edge*1.05+halo*0.18+corners*0.6);
+        #endif
         #ifdef ELECTRIC
         float crawlA = pow(max(0.0, sin((p.x * 1.25 - p.y * 0.85) * 21.0 - uTime * 17.0)), 12.0);
         float crawlB = pow(max(0.0, sin((p.x * 0.65 + p.y * 1.40) * 17.0 + uTime * 13.0)), 15.0);
@@ -73,7 +77,7 @@ const fragmentShader = /* glsl */ `
         color = mix(uBase, uHot, clamp(pow(edge, 5.0) * 0.40 + corners * 0.22, 0.0, 1.0));
         #endif
         gl_FragColor = vec4(color, alpha);
-        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING)
+        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON)
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #endif
@@ -107,15 +111,15 @@ export class CardManifestation {
                 uTime: { value: 0 }, uMorph: { value: 0 }, uOpacity: { value: 0 },
                 uFill: { value: 1 }, uCorners: { value: 0 },
                 uBase: { value: palette === 'psychic' ? new THREE.Vector3(0.76, 0.35, 1.0)
-                    : new THREE.Color(palette === 'fighting' ? 0xff390b : palette === 'ice' ? 0x80d8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
+                    : new THREE.Color(palette === 'poison' ? 0xbd21f5 : palette === 'fighting' ? 0xff390b : palette === 'ice' ? 0x80d8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
                 uHot: { value: palette === 'psychic' ? new THREE.Vector3(1.0, 0.89, 1.0)
-                    : new THREE.Color(palette === 'fighting' ? 0xffd28a : palette === 'ice' ? 0xebfbff : palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
+                    : new THREE.Color(palette === 'poison' ? 0xffddff : palette === 'fighting' ? 0xffd28a : palette === 'ice' ? 0xebfbff : palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
                 ...(electric ? {
                     uElectricActivity: { value: 0 },
                 } : {}),
             },
             defines: electric ? { ELECTRIC: 1 } : palette === 'grass' ? { GRASS: 1 }
-                : palette === 'fighting' ? { FIGHTING: 1 } : palette === 'fire' ? { FIRE: 1 } : palette === 'water' || palette === 'ice' ? { WATER: 1 } : {},
+                : palette === 'poison' ? { POISON: 1 } : palette === 'fighting' ? { FIGHTING: 1 } : palette === 'fire' ? { FIRE: 1 } : palette === 'water' || palette === 'ice' ? { WATER: 1 } : {},
             vertexShader,
             fragmentShader,
             transparent: true,

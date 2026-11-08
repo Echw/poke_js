@@ -15,10 +15,11 @@ import { SMOKE_OPENING } from '../src/effects/smokeBoundary.ts';
 
 const bits=Number(process.argv.find(a=>a.startsWith('--bits='))?.split('=')[1]||8);
 const variant=process.argv.find(a=>a.startsWith('--variant='))?.split('=')[1]||'ice';
-assert.ok(['ice','fighting'].includes(variant),'--variant must be ice or fighting');
+assert.ok(['ice','fighting','poison'].includes(variant),'--variant must be ice, fighting or poison');
 const config=smokeProfile(variant),smokeSourceFrame=config.sourceFrame;
-const comparison=process.argv.find(a=>a.startsWith('--compare-ice='))?.slice('--compare-ice='.length);
-if(comparison)assert.equal(variant,'ice','Ice comparison requires --variant=ice');
+const comparisonArg=process.argv.find(a=>a.startsWith('--compare-'));
+if(comparisonArg)assert.ok(comparisonArg.startsWith(`--compare-${variant}=`),'Baseline comparison must match --variant');
+const comparison=comparisonArg?.slice(`--compare-${variant}=`.length);
 assert.ok([8,12,16].includes(bits),'--bits must be 8, 12 or 16');
 const keepReference=process.argv.includes('--reference');
 const temporary=path.join(os.tmpdir(),`poke-smoke-export-${Date.now()}`);await mkdir(temporary,{recursive:true});
@@ -50,7 +51,7 @@ try{
         layout={resolution:n,tiles,width:n*tiles,height:n*Math.ceil(n/tiles),velocityResolution:velocity,channels:1,lightSteps:name==='mobile'?6:8};
         builder=createSmokeClip(metadata,name,layout,bits);reference=keepReference?createSmokeClip(metadata,name,layout,16):undefined;
         const context=await browser.newContext({viewport:{width,height:800},deviceScaleFactor:1}),page=await context.newPage();await isolate(page);
-        await page.goto(`http://127.0.0.1:5173/?reveal=${variant}&smokeSource=live`);
+        await page.goto(`http://127.0.0.1:5173/?reveal=${variant}&smokeSource=live`, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await page.waitForFunction(()=>window.__pokemonReveal?.debug,null,{timeout:120000});await page.evaluate(()=>window.__pokemonReveal.stop());
         for(let frame=0;frame<SMOKE_FRAMES;frame++){
             await page.evaluate(async({frame,sourceFrame,port,token})=>{
@@ -63,11 +64,11 @@ try{
         assert.equal(expected,SMOKE_FRAMES);
         const clip=builder.finish();
         if(comparison){
-            const original=await readFile(path.join(comparison,`ice-${name}.bin`));
+            const original=await readFile(path.join(comparison,`${variant}-${name}.bin`));
             const previous=parseSmokeClip(original.buffer.slice(original.byteOffset,original.byteOffset+original.byteLength)).header;
             const hashes=h=>h.profile.chunks.flatMap(c=>c.frames.map(f=>[f.sourceSHA256,f.densitySHA256]));
-            assert.deepEqual(hashes(clip.header),hashes(previous),`${name}: every original and quantized Ice field must remain identical`);
-            console.log(`${name}: 211 original + 211 quantized Ice fields unchanged`);
+            assert.deepEqual(hashes(clip.header),hashes(previous),`${name}: every original and quantized baseline field must remain identical`);
+            console.log(`${name}: 211 original + 211 quantized baseline fields unchanged`);
         }
         await writeFile(path.join(temporary,`${variant}-${name}.bin`),clip.buffer);
         if(reference)await writeFile(path.join(temporary,`reference-${name}.bin`),reference.finish().buffer);

@@ -1,11 +1,11 @@
 import { SMOKE_PRESET } from './smokeReplayTypes.ts';
 import { SMOKE_TIMING_ID, smokeSourceFrame, smokeSourceTime } from './smokeTiming.ts';
 
-export type SmokeVariant = 'ice' | 'fighting';
+export type SmokeVariant = 'ice' | 'fighting' | 'poison';
 
 /** Shared by the solver, replay validator and offline exporter. Ice remains the default. */
 export function smokeProfile(variant: SmokeVariant = 'ice') {
-    return variant === 'fighting' ? FIGHTING_SMOKE : ICE_SMOKE;
+    return variant === 'poison' ? POISON_SMOKE : variant === 'fighting' ? FIGHTING_SMOKE : ICE_SMOKE;
 }
 
 const ICE_SMOKE = {
@@ -27,3 +27,13 @@ export function fightingImpulse(time: number): number {
     return Math.exp(-(((time - 0.64) / 0.095) ** 2)) * 0.7
         + Math.exp(-(((time - 1.02) / 0.13) ** 2));
 }
+
+/** Two lateral plumes rise out of the bowl, leaving the card corridor clear. */
+const POISON_SMOKE = {
+    variant: 'poison' as const, domainMin: [-1.7, -1.0, -1.7], domainSize: 3.4,
+    preset: { ...SMOKE_PRESET, emission: 9.0, density: 1.65, fallSpeed: 0.90,
+        spread: 1.30, turbulence: 1.20, fadeTime: 0.9, adhesion: 0.05, curlStrength: 1.45 },
+    timingId: 'poison-3.5-opening-0.8-realtime-v1',
+    sourceFrame: (frame: number) => Math.min(210, Math.max(0, frame)),
+    sourceTime: (time: number) => Math.min(3.5, Math.max(0, time)),
+};
