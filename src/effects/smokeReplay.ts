@@ -1,3 +1,6 @@
+import groundDesktopUrl from '../assets/mist-replay/ground-desktop.bin?url';
+import groundMobileUrl from '../assets/mist-replay/ground-mobile.bin?url';
+import groundEventsSource from './groundEvents.ts?raw';
 import * as THREE from 'three';
 import { GpuTimer } from './gpuTimer';
 import { SMOKE_OPENING, SmokeBoundarySampler } from './smokeBoundary';
@@ -108,7 +111,7 @@ export class SmokeReplay {
         if (new Uint8Array(new Uint16Array([1]).buffer)[0] !== 1) throw new Error('Replay requires little-endian FP16 support');
         this.manifest = await new Promise<SmokeReplayManifest>((resolve, reject) => {
             this.initialization = { resolve, reject };
-            const url = this.variant === 'poison' ? (this.mobile ? poisonMobileUrl : poisonDesktopUrl)
+            const url = this.variant === 'ground' ? (this.mobile ? groundMobileUrl : groundDesktopUrl) : this.variant === 'poison' ? (this.mobile ? poisonMobileUrl : poisonDesktopUrl)
                 : this.variant === 'fighting' ? (this.mobile ? fightingMobileUrl : fightingDesktopUrl)
                 : (this.mobile ? mobileClipUrl : desktopClipUrl);
             this.worker.postMessage({ id: 0, kind: 'init', url: new URL(url, location.href).href });
@@ -124,7 +127,7 @@ export class SmokeReplay {
             throw new Error('Replay does not match the current preset/opening contract');
         }
         const hex = async (data: BufferSource) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), b => b.toString(16).padStart(2, '0')).join('');
-        for (const [name, source] of Object.entries({ 'gpuSmokeSimulation.ts': simulationSource, 'gpuSmokeShaders.ts': shaderSource, 'smokeBoundary.ts': boundarySource, 'smokeProfile.ts': profileSource })) {
+        for (const [name, source] of Object.entries({ 'gpuSmokeSimulation.ts': simulationSource, 'gpuSmokeShaders.ts': shaderSource, 'smokeBoundary.ts': boundarySource, 'smokeProfile.ts': profileSource, ...(this.variant === 'ground' ? { 'groundEvents.ts': groundEventsSource } : {}) })) {
             if (await hex(new TextEncoder().encode(source.replace(/\r\n?/g, '\n'))) !== m.sources[name]) throw new Error(`Replay source changed: ${name}; export again`);
         }
         const modelResponse = await fetch(modelUrl, { signal: this.abort.signal });

@@ -201,7 +201,7 @@ export class GpuSmokeSimulation {
                 name,
                 new THREE.ShaderMaterial({
                     glslVersion: THREE.GLSL3,
-                    defines: { ['PASS_' + name]: 1, ...(variant === 'poison' ? { POISON_SMOKE: 1 } : variant === 'fighting' ? { FIGHTING_SMOKE: 1 } : {}) },
+                    defines: { ['PASS_' + name]: 1, ...(variant === 'ground' ? { GROUND_SMOKE: 1 } : variant === 'poison' ? { POISON_SMOKE: 1 } : variant === 'fighting' ? { FIGHTING_SMOKE: 1 } : {}) },
                     uniforms: this.uniforms,
                     vertexShader: fullscreenVertex,
                     fragmentShader: simulationFragment,

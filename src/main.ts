@@ -19,10 +19,10 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 async function start() {
     const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
     const requestedReveal = previewParams?.get('reveal');
-    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison'] as const).find(
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground'] as const).find(
               (type) => type === requestedReveal,
           );
-    const initialName = previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
+    const initialName = previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -33,7 +33,9 @@ async function start() {
 
     let cardRequestId = 0;
     const initialCard = (
-        previewReveal === 'poison'
+        previewReveal === 'ground'
+            ? Promise.resolve({ name: 'Sandshrew', image: 'https://assets.tcgdex.net/en/base/base1/62', types: ['Fighting'], dexId: [27] })
+            : previewReveal === 'poison'
             ? Promise.resolve({ name: 'Koffing', image: 'https://assets.tcgdex.net/en/base/base1/51', types: ['Grass'], dexId: [109] })
             : previewReveal === 'ice'
             ? Promise.resolve({
@@ -69,8 +71,8 @@ async function start() {
             }
             try {
                 const applied =
-                    previewReveal === 'ice' || previewReveal === 'fighting' || previewReveal === 'poison'
-                        ? await scene.setCardImage(previewReveal === 'poison' ? '/textures/koffing-preview.webp' : previewReveal === 'ice' ? '/textures/glaceon-preview.webp' : '/textures/machop-preview.webp')
+                    previewReveal === 'ice' || previewReveal === 'fighting' || previewReveal === 'ground' || previewReveal === 'poison'
+                        ? await scene.setCardImage(previewReveal === 'ground' ? '/textures/sandshrew-preview.webp' : previewReveal === 'poison' ? '/textures/koffing-preview.webp' : previewReveal === 'ice' ? '/textures/glaceon-preview.webp' : '/textures/machop-preview.webp')
                         : await loadCardImage(scene, selectedCard.image, () => cardRequestId === 0);
                 if (cardRequestId === 0 && applied) status.textContent = '';
             } catch (error) {

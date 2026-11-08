@@ -33,3 +33,7 @@ The Fighting development preview uses the actual Machop card, base1-52, download
 The Poison development preview uses the actual Koffing card, base1-51, downloaded from https://assets.tcgdex.net/en/base/base1/51/high.webp, under the same artwork ownership notice. The local Poison species/form lookup was verified against https://pokeapi.co/api/v2/type/poison on 2026-11-08; no PokéAPI request is needed during playback.
 
 The subsequent dry-ice revision uses the [SideFX Dry Ice example](https://www.sidefx.com/docs/houdini/shelf/spyro_dryice.html) as a behavioral reference for wall attachment and rolling overflow. No Houdini simulation, assets or source code are included.
+
+The Ground development preview uses the actual Sandshrew card, base1-62, downloaded from https://assets.tcgdex.net/en/base/base1/62/high.webp, under the same artwork ownership notice. Primary Ground species and forms were verified against https://pokeapi.co/api/v2/type/ground on 2026-11-08. Ground geometry is procedural; the supplied storyboard is a visual reference, not a runtime texture.
+
+Ground revision 3 uses color, roughness and height textures supplied by the user from `Downloads/rocks_ground_02_4k.blend/textures`. Browser derivatives are `public/textures/ground/rock-color.webp` and `rock-surface.webp` (height/roughness packed into red/green). The local folder did not include a license notice; no software license above is asserted for these user-provided images. Original files are unchanged.

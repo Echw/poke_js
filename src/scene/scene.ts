@@ -1,3 +1,4 @@
+import { GroundEffect } from '../effects/ground';
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
@@ -139,10 +140,11 @@ export const sceneController = {
         let water: WaterEffect | undefined;
         let ice: IceEffect | undefined;
         let fighting: FightingEffect | undefined;
+        let ground: GroundEffect | undefined;
         let poison: PoisonEffect | undefined;
-        let fogEffect: IceEffect | FightingEffect | PoisonEffect | undefined;
+        let fogEffect: IceEffect | FightingEffect | GroundEffect | PoisonEffect | undefined;
         const preparedFog = new Set<PokemonRevealEffect>();
-        const fogVolumes = new Map<'ice' | 'fighting' | 'poison', GpuSmokeMist>();
+        const fogVolumes = new Map<'ice' | 'fighting' | 'poison' | 'ground', GpuSmokeMist>();
         let mist: GpuSmokeMist | undefined;
         let depthTarget: THREE.WebGLRenderTarget | undefined;
         const depthMaterial = new THREE.MeshDepthMaterial();
@@ -260,15 +262,15 @@ export const sceneController = {
 
         const createTimeline = (reveal: RevealType) => {
             const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? SMOKE_OPENING.duration : 1.90;
+            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? SMOKE_OPENING.duration : 1.90;
             next.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             next.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
-            next.to(card.position, { y: reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to(card.position, { y: reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
-            const cardScale = reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? 0.94 : 1.18;
+            const cardScale = reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? 0.94 : 1.18;
             next.to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
-            next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: reveal === 'fighting' ? 'power4.out' : 'power2.inOut' }, CARD_REVEAL_TIMING.image);
+            next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: reveal === 'fighting' ? 'power4.out' : reveal === 'ground' ? 'power3.out' : 'power2.inOut' }, CARD_REVEAL_TIMING.image);
             return next;
         };
         let timeline = createTimeline('psychic');
@@ -332,6 +334,7 @@ export const sceneController = {
                         frameGpu: frameTimer.stats(),
                         renderedFrames,
                         fighting: fighting?.getDebugInfo(),
+                        ground: ground?.getDebugInfo(),
                         poison: poison?.getDebugInfo(),
                         mist: mist ? { visible:mist.mesh.visible,kind:'gpu',...mist.getDebugInfo() } : undefined,
                     };
@@ -413,16 +416,20 @@ export const sceneController = {
                     poison = new PoisonEffect(card, skyEnvironment, window.innerWidth < 700);
                     glb.scene.add(poison.root);
                 }
+                if (reveal === 'ground' && !ground) {
+                    ground = new GroundEffect(card, window.innerWidth < 700);
+                    glb.scene.add(ground.root);
+                }
                 if (reveal === 'fighting' && !fighting) {
                     fighting = new FightingEffect(card, window.innerWidth < 700);
                     glb.scene.add(fighting.root);
                 }
-                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'poison') && !fogVolumes.has(reveal)) {
+                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison') && !fogVolumes.has(reveal)) {
                     mist = new GpuSmokeMist(renderer,camera,smokeBoundary,window.innerWidth<700,
                         import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay', reveal);
                     fogVolumes.set(reveal, mist);
                 }
-                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'poison') && !depthTarget) {
+                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison') && !depthTarget) {
                     // Preserve the root-space opening coordinates while following the actual bottom node.
                     mistSource = new THREE.Object3D();
                     mistSource.name = 'BowlMistSource';
@@ -439,9 +446,9 @@ export const sceneController = {
                 }
                 activeEffect.setActive(false);
                 activeEffect = reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
-                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'fighting' ? fighting! : reveal === 'poison' ? poison! : psychic;
-                fogEffect = reveal === 'ice' ? ice : reveal === 'fighting' ? fighting : reveal === 'poison' ? poison : undefined;
-                mist = reveal === 'ice' || reveal === 'fighting' || reveal === 'poison' ? fogVolumes.get(reveal) : undefined;
+                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'ground' ? ground! : reveal === 'fighting' ? fighting! : reveal === 'poison' ? poison! : psychic;
+                fogEffect = reveal === 'ice' ? ice : reveal === 'ground' ? ground : reveal === 'fighting' ? fighting : reveal === 'poison' ? poison : undefined;
+                mist = reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? fogVolumes.get(reveal) : undefined;
                 revealFill.color.copy(activeEffect.fillLightColor);
                 revealFill.position.copy(activeEffect.fillLightPosition);
                 activeEffect.setActive(true);
@@ -454,6 +461,10 @@ export const sceneController = {
                 frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
                 timeline = createTimeline(reveal);
                 if (mist && fogEffect) {
+                    if (reveal === 'ground') {
+                        await ground!.ready;
+                        if (disposed || epoch !== playbackEpoch) return;
+                    }
                     await mist.prepare(0);
                     if (disposed || epoch !== playbackEpoch) return;
                     mist.reset();
@@ -484,7 +495,12 @@ export const sceneController = {
                 if (disposed || epoch !== playbackEpoch) return;
                 lastShownTime = 0;
                 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                    timeline.progress(1);
+                    if (reveal === 'ground') {
+                        // Ground prepares its final frame before buffering can rewind the timeline.
+                        if (mist) await mist.prepare(timeline.duration());
+                        if (disposed || epoch !== playbackEpoch) return;
+                        timeline.progress(1, true);
+                    } else timeline.progress(1);
                     finishRender();
                 } else {
                     playbackWanted = true;
@@ -515,6 +531,7 @@ export const sceneController = {
                 water?.dispose();
                 ice?.dispose();
                 fighting?.dispose();
+                ground?.dispose();
                 poison?.dispose();
                 fogVolumes.forEach(volume => volume.dispose());
                 depthTarget?.dispose();

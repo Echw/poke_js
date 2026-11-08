@@ -1,3 +1,4 @@
+import { groundDustGLSL } from './groundEvents.ts';
 export const fullscreenVertex = `void main(){gl_Position=vec4(position.xy,0.0,1.0);}`;
 
 /** Cell centers use integer indices; RGB velocities live on the cell's +X/+Y/+Z faces. */
@@ -99,9 +100,12 @@ export const simulationFragment = /* glsl */ `
         return pointSolid(mid)||pointSolid(back)?p:back;
     }
     vec3 trace(vec3 p,float dt){return traceWithVelocity(p,dt,velocityAt(p));}
+    ${groundDustGLSL}
     float source(vec3 p){
         vec3 q=(uWorldToBowl*vec4(p,1)).xyz;
-        #ifdef POISON_SMOKE
+        #ifdef GROUND_SMOKE
+        return groundDust(q,uTime)*smoothstep(0.01,0.23,uOpening)*uEmission;
+        #elif defined(POISON_SMOKE)
         float band=smoothstep(-0.28,-0.19,q.y)*(1.0-smoothstep(-0.10,-0.02,q.y));
         float sides=exp(-dot(q.xz-vec2(-0.62,-0.10),q.xz-vec2(-0.62,-0.10))*30.0)
             +0.88*exp(-dot(q.xz-vec2(0.59,-0.16),q.xz-vec2(0.59,-0.16))*32.0)
@@ -186,7 +190,7 @@ export const simulationFragment = /* glsl */ `
                 float rho=densityAt(face);
                 vec3 q=(uWorldToBowl*vec4(face,1)).xyz;
                 float exposed=max(smoothstep(0.86,1.08,length(q.xz)),smoothstep(0.015,0.16,q.y));
-                #if defined(FIGHTING_SMOKE) || defined(POISON_SMOKE)
+                #if defined(FIGHTING_SMOKE) || defined(POISON_SMOKE) || defined(GROUND_SMOKE)
                 force.y+=rho*uFallSpeed*(0.35+exposed*1.1);
                 #else
                 force.y-=rho*uFallSpeed*(0.15+exposed*2.2);
@@ -195,7 +199,9 @@ export const simulationFragment = /* glsl */ `
                 force+=eddy*uTurbulence*min(rho,1.0)*0.85;
                 vec3 radial=vec3(q.x,0,q.z)/max(length(q.xz),0.2);
                 vec3 target=mat3(uBowlToWorld)*(radial*(0.14+uSpread*0.3)+vec3(0,0.28,0));
-                #ifdef POISON_SMOKE
+                #ifdef GROUND_SMOKE
+                target=mat3(uBowlToWorld)*(radial*(0.35+uSpread*0.45)+vec3(0,0.22,0));
+                #elif defined(POISON_SMOKE)
                 // Up through the mouth first; horizontal drift then carries both plumes beyond the rim.
                 float aboveRim=smoothstep(-0.08,0.18,q.y);
                 float sideDirection=q.x/sqrt(q.x*q.x+0.025);

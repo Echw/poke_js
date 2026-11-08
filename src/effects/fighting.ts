@@ -1,3 +1,4 @@
+import { earthPosition, earthRotation } from './earthMotion';
 import * as THREE from 'three';
 import { CardTransformation } from './cardTransformation';
 import { createEarthGeometry, createEarthMaterial } from './fightingMaterial';
@@ -192,14 +193,12 @@ export class FightingEffect implements PokemonRevealEffect {
             this.dummy.position.copy(pose.base);
             const trembling = i < 4 && time > 0.1 && age < 0;
             if (age >= 0) {
-                this.dummy.position.addScaledVector(pose.velocity, age);
-                this.dummy.position.y -= 0.5 * GRAVITY * age * age;
+                earthPosition(this.dummy.position, pose.base, pose.velocity, age, GRAVITY);
             } else if (trembling) this.dummy.position.y += Math.sin(time * 58 + i) * 0.006;
             const alive = !this.finished && (trembling || age >= 0 && this.dummy.position.y > -1.45 && age < 2.1);
             if (alive) this.liveDebris++;
             else this.dummy.position.set(0, -20, 0);
-            this.spin.setFromAxisAngle(pose.axis, Math.max(0, age) * pose.spin);
-            this.dummy.quaternion.copy(pose.rotation).premultiply(this.spin);
+            earthRotation(this.dummy.quaternion, this.spin, pose.rotation, pose.axis, age, pose.spin);
             this.dummy.scale.copy(pose.scale);
             this.dummy.updateMatrix();
             this.debris[pose.variant].setMatrixAt(pose.instance, this.dummy.matrix);

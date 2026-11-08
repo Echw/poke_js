@@ -1,3 +1,4 @@
+import { isGroundCard } from './groundSpecies.ts';
 import { isPoisonCard } from './poisonSpecies.ts';
 import type { RevealType } from '../effects/types';
 import type { CardSelection } from './tcgdex';
@@ -37,6 +38,7 @@ export function revealTypeForCard(card: CardSelection): RevealType {
             (id) => ICE_SPECIES.has(id) || Boolean(REGIONAL_ICE[id] && name.includes(REGIONAL_ICE[id])),
         );
     if (ice) return 'ice';
+    if (isGroundCard(card)) return 'ground';
     if (card.types.includes('Fighting')) return 'fighting';
     return card.types.includes('Lightning')
         ? 'electric'

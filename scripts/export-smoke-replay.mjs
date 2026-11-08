@@ -15,7 +15,7 @@ import { SMOKE_OPENING } from '../src/effects/smokeBoundary.ts';
 
 const bits=Number(process.argv.find(a=>a.startsWith('--bits='))?.split('=')[1]||8);
 const variant=process.argv.find(a=>a.startsWith('--variant='))?.split('=')[1]||'ice';
-assert.ok(['ice','fighting','poison'].includes(variant),'--variant must be ice, fighting or poison');
+assert.ok(['ice','fighting','poison','ground'].includes(variant),'--variant must be ice, fighting, poison or ground');
 const config=smokeProfile(variant),smokeSourceFrame=config.sourceFrame;
 const comparisonArg=process.argv.find(a=>a.startsWith('--compare-'));
 if(comparisonArg)assert.ok(comparisonArg.startsWith(`--compare-${variant}=`),'Baseline comparison must match --variant');
@@ -25,6 +25,7 @@ const keepReference=process.argv.includes('--reference');
 const temporary=path.join(os.tmpdir(),`poke-smoke-export-${Date.now()}`);await mkdir(temporary,{recursive:true});
 const sources={};
 for(const name of ['gpuSmokeSimulation.ts','gpuSmokeShaders.ts','smokeBoundary.ts','smokeProfile.ts'])sources[name]=sha((await readFile(`src/effects/${name}`,'utf8')).replace(/\r\n?/g,'\n'));
+if(variant==='ground')sources['groundEvents.ts']=sha((await readFile('src/effects/groundEvents.ts','utf8')).replace(/\r\n?/g,'\n'));
 const metadata={contract:REPLAY_CONTRACT,id:'',dt:SMOKE_DT,duration:SMOKE_DURATION,frames:SMOKE_FRAMES,chunkFrames:4,
     variant,timingId:config.timingId,sourceFrameIndices:Array.from({length:SMOKE_FRAMES},(_,i)=>smokeSourceFrame(i)),
     domainMin:config.domainMin,domainSize:config.domainSize,preset:config.preset,opening:SMOKE_OPENING,

@@ -83,7 +83,7 @@ export class GpuSmokeMist {
             ),
             new THREE.ShaderMaterial({
                 glslVersion: THREE.GLSL3,
-                defines: variant === 'poison' ? { POISON_SMOKE: 1 } : variant === 'fighting' ? { FIGHTING_SMOKE: 1 } : {},
+                defines: variant === 'ground' ? { GROUND_SMOKE: 1 } : variant === 'poison' ? { POISON_SMOKE: 1 } : variant === 'fighting' ? { FIGHTING_SMOKE: 1 } : {},
                 uniforms: {
                     uPoisonTime: { value: 0 },
                     uN: { value: this.field.densityResolution },
@@ -268,6 +268,10 @@ export class GpuSmokeMist {
         u.uFade.value = this.variant === 'fighting' ? (1 - THREE.MathUtils.smoothstep(time, 1.6, 3.5) * 0.8)
             * (1 - THREE.MathUtils.smoothstep(time, 3.15, 3.5))
             : 1 - THREE.MathUtils.smoothstep(smokeProfile(this.variant).sourceTime(time), 5.7, 6);
+        if (this.variant === 'ground') {
+            u.uIceLight.value *= 0.6;
+            u.uFade.value = 0.75 * (1 - THREE.MathUtils.smoothstep(time, 2.65, 3.3));
+        }
         if (this.variant === 'poison') {
             u.uPoisonTime.value = time;
             u.uIceLight.value = (0.45 + 0.8 * THREE.MathUtils.smoothstep(time, 0.2, 1.0))

@@ -111,6 +111,9 @@ export const gpuVolumeFragment = /* glsl */ `
                     #ifdef POISON_SMOKE
                     color=vec3(0.018,0.001,0.028)+vec3(0.20,0.005,0.32)*lighting
                         +vec3(0.42,0.015,0.56)*bowlGlow;
+                    #elif defined(GROUND_SMOKE)
+                    color=vec3(0.055,0.030,0.012)+vec3(0.30,0.19,0.09)*lighting
+                        +vec3(0.36,0.17,0.035)*bowlGlow;
                     #elif defined(FIGHTING_SMOKE)
                     float impactGlow=exp(-dot(source,source)*19.0)*uIceLight;
                     color=vec3(0.035,0.001,0.005)+vec3(0.34,0.006,0.012)*lighting
