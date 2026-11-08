@@ -24,10 +24,12 @@ Zasoby Vite w `src/assets/mist-replay` to wyłącznie:
 
 | Profil | Plik | Rozmiar | Poprzednie paczki FP16 |
 | --- | --- | ---: | ---: |
-| Desktop | `ice-desktop.bin` | 21 626 357 B | 64 868 966 B |
-| Mobile | `ice-mobile.bin` | 9 563 792 B | 29 607 305 B |
+| Desktop | `ice-desktop.bin` | 21 626 458 B | 64 868 966 B |
+| Mobile | `ice-mobile.bin` | 9 563 893 B | 29 607 305 B |
 
-Łącznie **31 190 149 B**, około **67% mniej**. Urządzenie pobiera tylko swój profil. Vite nadaje obu plikom hashowane nazwy produkcyjne.
+Łącznie **31 190 351 B**, około **67% mniej**. Urządzenie pobiera tylko swój profil. Vite nadaje obu plikom hashowane nazwy produkcyjne.
+
+Integracja [Fighting Reveal](FIGHTING_REVEAL.md) dodała identyfikator wariantu i hash wspólnej konfiguracji do nagłówka. Ponowny eksport potwierdził identyczność wszystkich 422 oryginalnych pól Ice oraz 422 pól po kwantyzacji. Wzrost o 101 B na plik dotyczy metadanych; ruch, gęstość i paleta Ice pozostały bez zmian.
 
 Kontener `ICEMIST3` ma 16-bajtowy prefiks: osiem bajtów sygnatury, długość nagłówka JSON i długość danych, obie uint32 little-endian. Nagłówek zawiera metadane animacji, układ atlasu, preset, tożsamość źródeł/modelu/otwierania, paletę FP16 oraz położenia segmentów względem początku danych. Osobny manifest nie jest potrzebny.
 

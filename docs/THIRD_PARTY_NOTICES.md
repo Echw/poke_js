@@ -28,4 +28,6 @@ SOFTWARE.
 
 The development-only card preview is the actual Glaceon card image, dp5-5, downloaded from https://assets.tcgdex.net/en/dp/dp5/5/high.webp. Pokémon card artwork and trademarks belong to their respective owners and are not covered by the software licenses above. Production search still loads the actual selected TCGdex card.
 
+The Fighting development preview uses the actual Machop card, base1-52, downloaded from https://assets.tcgdex.net/en/base/base1/52/high.webp, under the same artwork ownership notice. It is a local preview fixture; production search loads the selected card.
+
 The subsequent dry-ice revision uses the [SideFX Dry Ice example](https://www.sidefx.com/docs/houdini/shelf/spyro_dryice.html) as a behavioral reference for wall attachment and rolling overflow. No Houdini simulation, assets or source code are included.

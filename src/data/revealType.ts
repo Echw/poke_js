@@ -35,6 +35,7 @@ export function revealTypeForCard(card: CardSelection): RevealType {
             (id) => ICE_SPECIES.has(id) || Boolean(REGIONAL_ICE[id] && name.includes(REGIONAL_ICE[id])),
         );
     if (ice) return 'ice';
+    if (card.types.includes('Fighting')) return 'fighting';
     return card.types.includes('Lightning')
         ? 'electric'
         : card.types.includes('Grass')

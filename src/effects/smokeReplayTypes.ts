@@ -23,6 +23,7 @@ export interface ReplayProfile {
     chunks: ReplayChunk[]; totalBytes: number;
 }
 export interface SmokeReplayManifest {
+    variant?: 'ice' | 'fighting';
     headerSHA256: string;
     contract: string; id: string; dt: number; frames: number; chunkFrames: number;
     duration: number; timingId: string; sourceFrameIndices: number[];

@@ -19,10 +19,10 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 async function start() {
     const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
     const requestedReveal = previewParams?.get('reveal');
-    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice'] as const).find(
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting'] as const).find(
               (type) => type === requestedReveal,
           );
-    const initialName = previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
+    const initialName = previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -40,7 +40,9 @@ async function start() {
                   types: ['Water'],
                   dexId: [471],
               })
-            : fetchCard(previewReveal === 'water' ? 'Squirtle' : undefined)
+            : previewReveal === 'fighting'
+              ? Promise.resolve({ name: 'Machop', image: 'https://assets.tcgdex.net/en/base/base1/52', types: ['Fighting'], dexId: [66] })
+              : fetchCard(previewReveal === 'water' ? 'Squirtle' : undefined)
     ).catch((error) => {
         console.error(`Could not fetch ${initialName}.`, error);
         return undefined;
@@ -65,8 +67,8 @@ async function start() {
             }
             try {
                 const applied =
-                    previewReveal === 'ice'
-                        ? await scene.setCardImage('/textures/glaceon-preview.webp')
+                    previewReveal === 'ice' || previewReveal === 'fighting'
+                        ? await scene.setCardImage(previewReveal === 'ice' ? '/textures/glaceon-preview.webp' : '/textures/machop-preview.webp')
                         : await loadCardImage(scene, selectedCard.image, () => cardRequestId === 0);
                 if (cardRequestId === 0 && applied) status.textContent = '';
             } catch (error) {

@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
+import { fightingImpulse } from './smokeProfile';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting';
 
 /** Shared handoff times, in seconds from the Ball opening. */
 export const CARD_REVEAL_TIMING = {
@@ -56,6 +57,9 @@ const coreFragment = /* glsl */ `
         #endif
         #ifdef WATER_SOURCE
         color = mix(uBase, uHot * 1.8, pow(facing, 3.0));
+        #endif
+        #ifdef FIGHTING_SOURCE
+        color = mix(uHot * 1.6, uHot * 3.0, smoothstep(0.0, 0.75, facing));
         #endif
         gl_FragColor = vec4(color * pulse, uOpacity);
         #endif
@@ -145,10 +149,12 @@ export class CardTransformation {
     private readonly glows: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>[] = [];
     private readonly fadeSourceWithCard: boolean;
     private readonly ice: boolean;
+    private readonly fighting: boolean;
     private finished = false;
 
     constructor(card: THREE.Mesh, palette: RevealPalette, mobile = false, environment?: THREE.Texture) {
         this.ice = palette === 'ice';
+        this.fighting = palette === 'fighting';
         this.fadeSourceWithCard = palette !== 'psychic';
         this.manifestation = new CardManifestation(card, palette, environment);
         this.manifestation.setActive(false);
@@ -182,6 +188,15 @@ export class CardTransformation {
                 mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
         );
         this.core.position.set(0, -0.07, palette === 'ice' || palette === 'water' ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
+        if (palette === 'fighting') {
+            coreMaterial.uniforms.uBase.value = new THREE.Color(0xff3209);
+            coreMaterial.uniforms.uHot.value = new THREE.Color(0xffe6a3);
+            coreMaterial.uniforms.uRim.value = new THREE.Color(0xb30c05);
+            coreMaterial.defines.FIGHTING_SOURCE = 1;
+            this.core.geometry.dispose();
+            this.core.geometry = new THREE.SphereGeometry(0.05, mobile ? 20 : 32, mobile ? 14 : 24);
+            this.core.position.set(0, -0.07, 0.38);
+        }
         // Transparent water is rendered first; the source still tests the Ball's depth.
         if (palette === 'water') this.core.renderOrder = 3;
         this.root.add(this.core);
@@ -210,12 +225,12 @@ export class CardTransformation {
             if (!geometry) throw new Error('Energy source glow geometry unavailable');
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uColor: { value: new THREE.Color(palette === 'ice' ? 0x7ad8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffc72b : palette === 'fire' ? 0xff4a08 : 0x9ced5f) },
+                    uColor: { value: new THREE.Color(palette === 'fighting' ? 0xff3108 : palette === 'ice' ? 0x7ad8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffc72b : palette === 'fire' ? 0xff4a08 : 0x9ced5f) },
                     ...(palette === 'fire' ? { uFireWarm: { value: new THREE.Color(0xff8a16) } } : {}),
                     uOpacity: { value: 0 }, uTime: { value: 0 },
-                    uCenterSharpness: { value: palette === 'fire' ? 16 : 8 },
+                    uCenterSharpness: { value: palette === 'fighting' ? 22 : palette === 'fire' ? 16 : 8 },
                     uHaloSharpness: { value: palette === 'ice' ? 3.4 : palette === 'fire' ? 3.2 : 2.2 },
-                    uHaloStrength: { value: palette === 'ice' ? 0.68 : palette === 'water' ? 0.38 : palette === 'fire' ? 0.28 : 0.56 },
+                    uHaloStrength: { value: palette === 'fighting' ? 0.16 : palette === 'ice' ? 0.68 : palette === 'water' ? 0.38 : palette === 'fire' ? 0.28 : 0.56 },
                     ...(palette === 'ice' ? { uIceCore: { value: 1.8 } } : {}),
                 },
                 vertexShader: glowVertex,
@@ -226,7 +241,7 @@ export class CardTransformation {
                         : { COLOR_MANAGED: 1 },
                 transparent: true,
                 blending: THREE.AdditiveBlending,
-                depthTest: palette === 'water' || palette === 'ice',
+                depthTest: palette === 'water' || palette === 'ice' || palette === 'fighting',
                 depthWrite: false,
                 side: THREE.DoubleSide,
                 forceSinglePass: true,
@@ -268,7 +283,7 @@ export class CardTransformation {
         timeline.to(this.state, { energy: 1, duration: 0.4, ease: 'power3.out' }, 0.4);
         timeline.to(this.state, { morph: 1, silhouette: 1, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.morph);
         timeline.to(this.state, { corners: 1, duration: 0.35, ease: 'power2.out' }, CARD_REVEAL_TIMING.corners);
-        timeline.to(this.state, { cardImage: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.image);
+        timeline.to(this.state, { cardImage: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: this.fighting ? 'power4.out' : 'power2.inOut' }, CARD_REVEAL_TIMING.image);
         timeline.to(this.state, { fade: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.fade, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.fade);
     }
 
@@ -277,11 +292,13 @@ export class CardTransformation {
         const sourceOpacity = fade * (this.fadeSourceWithCard ? 1 - cardImage : 1);
         this.core.scale.setScalar(0.72 + energy * 0.35 + Math.sin(time * 11) * 0.055);
         this.core.material.uniforms.uTime.value = time;
+        const burst = this.fighting ? fightingImpulse(time) : 0;
+        this.core.scale.multiplyScalar(1 + burst * 0.7);
         this.core.material.uniforms.uOpacity.value = core * sourceOpacity * (1 - morph);
         for (const glow of this.glows) {
             if (glow.material.uniforms.uTime) glow.material.uniforms.uTime.value = time;
             glow.material.uniforms.uOpacity.value = (core * 0.65 + energy * 0.36)
-                * sourceOpacity * (1 - morph * 0.5) * (this.ice ? 0.9 : 1);
+                * sourceOpacity * (1 - morph * 0.5) * (this.ice ? 0.9 : 1) * (1 + burst * 1.7);
         }
         this.manifestation.update(time, morph,
             this.finished ? 0 : silhouette * fade * (1 - cardImage),

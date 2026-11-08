@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import { GpuTimer } from './gpuTimer';
 import { SMOKE_OPENING, SmokeBoundarySampler } from './smokeBoundary';
-import { REPLAY_CONTRACT, SMOKE_PRESET } from './smokeReplayTypes';
+import { REPLAY_CONTRACT } from './smokeReplayTypes';
+import { smokeProfile, type SmokeVariant } from './smokeProfile';
 import desktopClipUrl from '../assets/mist-replay/ice-desktop.bin?url';
 import mobileClipUrl from '../assets/mist-replay/ice-mobile.bin?url';
+import fightingDesktopUrl from '../assets/mist-replay/fighting-desktop.bin?url';
+import fightingMobileUrl from '../assets/mist-replay/fighting-mobile.bin?url';
+import profileSource from './smokeProfile.ts?raw';
 import type { ReplayProfile, SmokeReplayManifest } from './smokeReplayTypes';
 import simulationSource from './gpuSmokeSimulation.ts?raw';
 import shaderSource from './gpuSmokeShaders.ts?raw';
 import boundarySource from './smokeBoundary.ts?raw';
 import modelUrl from '../assets/pokeball.glb?url';
-import { SMOKE_DT, SMOKE_DURATION, SMOKE_FRAMES, SMOKE_TIMING_ID, smokeFrame, smokeSourceFrame } from './smokeTiming';
+import { SMOKE_DT, SMOKE_DURATION, SMOKE_FRAMES, smokeFrame } from './smokeTiming';
 import { probeSmokeFiltering } from './smokeTextureProbe';
 
 const stats = (values: number[]) => {
@@ -55,7 +59,10 @@ export class SmokeReplay {
     private renderer: THREE.WebGLRenderer;
     private boundary: SmokeBoundarySampler;
     private mobile: boolean;
-    constructor(renderer: THREE.WebGLRenderer, boundary: SmokeBoundarySampler, mobile = false) {
+    readonly variant: SmokeVariant;
+    constructor(renderer: THREE.WebGLRenderer, boundary: SmokeBoundarySampler, mobile = false, variant: SmokeVariant = 'ice') {
+        this.variant = variant;
+        this.domainMin.fromArray(smokeProfile(variant).domainMin);
         this.renderer = renderer; this.boundary = boundary; this.mobile = mobile;
         this.densityResolution = mobile ? 96 : 128;
         this.densityTiles = Math.ceil(Math.sqrt(this.densityResolution));
@@ -99,19 +106,22 @@ export class SmokeReplay {
         if (new Uint8Array(new Uint16Array([1]).buffer)[0] !== 1) throw new Error('Replay requires little-endian FP16 support');
         this.manifest = await new Promise<SmokeReplayManifest>((resolve, reject) => {
             this.initialization = { resolve, reject };
-            this.worker.postMessage({ id: 0, kind: 'init', url: new URL(this.mobile ? mobileClipUrl : desktopClipUrl, location.href).href });
+            const url = this.variant === 'fighting' ? (this.mobile ? fightingMobileUrl : fightingDesktopUrl)
+                : (this.mobile ? mobileClipUrl : desktopClipUrl);
+            this.worker.postMessage({ id: 0, kind: 'init', url: new URL(url, location.href).href });
         });
         const m = this.manifest;
+        const config = smokeProfile(this.variant);
         if (m.contract !== REPLAY_CONTRACT || m.dt !== this.dt || m.frames !== SMOKE_FRAMES || m.chunkFrames !== 4
-            || m.duration !== SMOKE_DURATION || m.timingId !== SMOKE_TIMING_ID
-            || m.sourceFrameIndices.length !== SMOKE_FRAMES || m.sourceFrameIndices.some((frame, i) => frame !== smokeSourceFrame(i))
-            || JSON.stringify(m.preset) !== JSON.stringify(SMOKE_PRESET)
+            || m.duration !== SMOKE_DURATION || m.timingId !== config.timingId || (m.variant ?? 'ice') !== this.variant
+            || m.sourceFrameIndices.length !== SMOKE_FRAMES || m.sourceFrameIndices.some((frame, i) => frame !== config.sourceFrame(i))
+            || JSON.stringify(m.preset) !== JSON.stringify(config.preset)
             || JSON.stringify(m.opening) !== JSON.stringify(SMOKE_OPENING)
             || m.domainSize !== this.domainSize || m.domainMin.join(',') !== this.domainMin.toArray().join(',')) {
             throw new Error('Replay does not match the current preset/opening contract');
         }
         const hex = async (data: BufferSource) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), b => b.toString(16).padStart(2, '0')).join('');
-        for (const [name, source] of Object.entries({ 'gpuSmokeSimulation.ts': simulationSource, 'gpuSmokeShaders.ts': shaderSource, 'smokeBoundary.ts': boundarySource })) {
+        for (const [name, source] of Object.entries({ 'gpuSmokeSimulation.ts': simulationSource, 'gpuSmokeShaders.ts': shaderSource, 'smokeBoundary.ts': boundarySource, 'smokeProfile.ts': profileSource })) {
             if (await hex(new TextEncoder().encode(source.replace(/\r\n?/g, '\n'))) !== m.sources[name]) throw new Error(`Replay source changed: ${name}; export again`);
         }
         const modelResponse = await fetch(modelUrl, { signal: this.abort.signal });
@@ -195,7 +205,7 @@ export class SmokeReplay {
         this.timer.begin();
         try { this.renderer.copyTextureToTexture(upload, this.texture); }
         finally { this.timer.end(); upload.image.data = null; }
-        this.boundary.sample(smokeSourceFrame(frame) * this.dt, this.dt);
+        this.boundary.sample(smokeProfile(this.variant).sourceFrame(frame) * this.dt, this.dt);
         this.frame = frame; this.fieldVersion++; this.uploaded++;
         this.uploadTimes.push(performance.now() - start);
         if (this.uploadTimes.length > 400) this.uploadTimes.shift();
@@ -205,7 +215,7 @@ export class SmokeReplay {
     reset(): void { this.frame = -1; this.fieldVersion++; }
     clearTiming(): void { this.timer.clear(); this.decodeTimes = []; this.uploadTimes = []; }
     getDebugInfo() {
-        return { source: 'replay', frame: this.frame, sourceFrame: this.frame < 0 ? -1 : smokeSourceFrame(this.frame), version: this.version, solverPasses: 0,
+        return { source: 'replay', frame: this.frame, sourceFrame: this.frame < 0 ? -1 : smokeProfile(this.variant).sourceFrame(this.frame), version: this.version, solverPasses: 0,
             manifestId: this.manifest?.id, encodingBits: this.manifest?.encoding.bits, densityResolution: this.densityResolution,
             dataBytes: this.profile ? this.profile.width * this.profile.height * this.profile.channels * 2 * this.targets.length : 0,
             decodedBytes: [...this.chunks.values()].reduce((n, data) => n + data.byteLength, 0), chunks: this.chunks.size,

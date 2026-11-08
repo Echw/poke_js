@@ -101,9 +101,20 @@ export const simulationFragment = /* glsl */ `
     vec3 trace(vec3 p,float dt){return traceWithVelocity(p,dt,velocityAt(p));}
     float source(vec3 p){
         vec3 q=(uWorldToBowl*vec4(p,1)).xyz;
+        #ifdef FIGHTING_SMOKE
+        // Bowl-local lobes leave an irregular clear corridor in front of the card.
+        float band=smoothstep(-0.32,-0.20,q.y)*(1.0-smoothstep(-0.06,0.08,q.y));
+        float lobes=exp(-dot(q.xz-vec2(-0.28,-0.06),q.xz-vec2(-0.28,-0.06))*20.0)
+            +0.78*exp(-dot(q.xz-vec2(0.31,-0.13),q.xz-vec2(0.31,-0.13))*24.0)
+            +0.40*exp(-dot(q.xz-vec2(0.03,-0.32),q.xz-vec2(0.03,-0.32))*26.0);
+        float pulse=exp(-pow((uTime-0.64)/0.095,2.0))*0.7+exp(-pow((uTime-1.02)/0.13,2.0));
+        return lobes*band*smoothstep(0.01,0.23,uOpening)*(0.42+2.8*pulse)
+            *(1.0-smoothstep(1.15,1.45,uTime))*uEmission;
+        #else
         float disk=1.0-smoothstep(0.72,0.90,length(q.xz));
         float band=smoothstep(-0.32,-0.19,q.y)*(1.0-smoothstep(-0.04,0.055,q.y));
         return disk*band*smoothstep(0.01,0.23,uOpening)*(1.0-smoothstep(3.2,3.5,uTime))*uEmission;
+        #endif
     }
     float sponge(vec3 p){
         vec3 edge=min(p-uDomainMin,uDomainMin+vec3(float(uN)*uH)-p);
@@ -165,11 +176,19 @@ export const simulationFragment = /* glsl */ `
                 float rho=densityAt(face);
                 vec3 q=(uWorldToBowl*vec4(face,1)).xyz;
                 float exposed=max(smoothstep(0.86,1.08,length(q.xz)),smoothstep(0.015,0.16,q.y));
+                #ifdef FIGHTING_SMOKE
+                force.y+=rho*uFallSpeed*(0.35+exposed*1.1);
+                #else
                 force.y-=rho*uFallSpeed*(0.15+exposed*2.2);
+                #endif
                 float feed=source(face);
                 force+=eddy*uTurbulence*min(rho,1.0)*0.85;
                 vec3 radial=vec3(q.x,0,q.z)/max(length(q.xz),0.2);
                 vec3 target=mat3(uBowlToWorld)*(radial*(0.14+uSpread*0.3)+vec3(0,0.28,0));
+                #ifdef FIGHTING_SMOKE
+                float pulse=exp(-pow((uTime-0.64)/0.095,2.0))*0.7+exp(-pow((uTime-1.02)/0.13,2.0));
+                target=mat3(uBowlToWorld)*(radial*(0.25+uSpread*pulse)+vec3(0,0.65+1.35*pulse,0));
+                #endif
                 v[a]+=uDt*force[a];
                 v[a]=mix(v[a],target[a],1.0-exp(-feed*uDt*5.0));
                 float nearWall=(1.0-smoothstep(0.04,0.16,abs(length(q)-1.025)))*(1.0-smoothstep(-0.03,0.10,q.y));

@@ -94,8 +94,14 @@ export const gpuVolumeFragment = /* glsl */ `
                     float bowlGlow=exp(-dot(source,source)*5.0)*uIceLight;
                     float lighting=illumination(p,light);
                     // Pale, milky frost keeps cooler shadows without a saturated blue veil.
+                    #ifdef FIGHTING_SMOKE
+                    float impactGlow=exp(-dot(source,source)*19.0)*uIceLight;
+                    color=vec3(0.035,0.001,0.005)+vec3(0.34,0.006,0.012)*lighting
+                        +vec3(0.65,0.045,0.003)*impactGlow;
+                    #else
                     color=vec3(0.06,0.10,0.16)+vec3(0.20,0.27,0.34)*lighting
                         +vec3(0.08,0.14,0.20)*bowlGlow;
+                    #endif
                 }
                 float alpha=1.0-exp(-d*dt*uDensityScale*3.5);
                 acc.rgb+=(1.0-acc.a)*alpha*color;acc.a+=(1.0-acc.a)*alpha;

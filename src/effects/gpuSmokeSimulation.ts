@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { fullscreenVertex, simulationFragment } from './gpuSmokeShaders';
 import { SmokeBoundarySampler } from './smokeBoundary';
 import { GpuTimer } from './gpuTimer';
+import { smokeProfile, type SmokeVariant } from './smokeProfile';
 
 export interface SmokeSimulationSettings {
     emission: number;
@@ -85,7 +86,9 @@ export class GpuSmokeSimulation {
         boundary: SmokeBoundarySampler,
         settings: SmokeSimulationSettings,
         mobile = false,
+        variant: SmokeVariant = 'ice',
     ) {
+        this.domainMin.fromArray(smokeProfile(variant).domainMin);
         this.renderer = renderer;
         this.camera = camera;
         this.boundary = boundary;
@@ -198,7 +201,7 @@ export class GpuSmokeSimulation {
                 name,
                 new THREE.ShaderMaterial({
                     glslVersion: THREE.GLSL3,
-                    defines: { ['PASS_' + name]: 1 },
+                    defines: { ['PASS_' + name]: 1, ...(variant === 'fighting' ? { FIGHTING_SMOKE: 1 } : {}) },
                     uniforms: this.uniforms,
                     vertexShader: fullscreenVertex,
                     fragmentShader: simulationFragment,

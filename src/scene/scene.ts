@@ -12,6 +12,7 @@ import { GrassEffect } from '../effects/grass';
 import { FireEffect } from '../effects/fire';
 import { WaterEffect } from '../effects/water';
 import { IceEffect } from '../effects/ice';
+import { FightingEffect } from '../effects/fighting';
 import { GpuSmokeMist } from '../effects/gpuSmokeMist';
 import { GpuTimer } from '../effects/gpuTimer';
 import { SmokeBoundarySampler, SMOKE_OPENING } from '../effects/smokeBoundary';
@@ -136,7 +137,10 @@ export const sceneController = {
         let fire: FireEffect | undefined;
         let water: WaterEffect | undefined;
         let ice: IceEffect | undefined;
-        let icePrepared = false;
+        let fighting: FightingEffect | undefined;
+        let fogEffect: IceEffect | FightingEffect | undefined;
+        const preparedFog = new Set<PokemonRevealEffect>();
+        const fogVolumes = new Map<'ice' | 'fighting', GpuSmokeMist>();
         let mist: GpuSmokeMist | undefined;
         let depthTarget: THREE.WebGLRenderTarget | undefined;
         const depthMaterial = new THREE.MeshDepthMaterial();
@@ -163,7 +167,7 @@ export const sceneController = {
         renderer.info.autoReset = false;
         const render = () => {
             if (disposed || document.hidden) return;
-            if (mist instanceof GpuSmokeMist && activeEffect === ice && !mist.hasFrame(timeline.time())) {
+            if (mist instanceof GpuSmokeMist && fogEffect && !mist.hasFrame(timeline.time())) {
                 if (!buffering) {
                     buffering = true;
                     const desired = timeline.time(), epoch = playbackEpoch;
@@ -186,16 +190,16 @@ export const sceneController = {
             activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
             card.visible = true;
             revealFill.intensity = activeEffect.fillLightIntensity;
-            if (activeEffect === water || activeEffect === ice) {
+            if (activeEffect === water || fogEffect) {
                 glb.scene.updateWorldMatrix(true, false);
                 revealFill.position.copy(activeEffect.fillLightPosition).applyMatrix4(glb.scene.matrixWorld);
             }
             if (mist && depthTarget) {
-                const isIce = activeEffect === ice;
+                const hasFog = Boolean(fogEffect);
                 mist.mesh.visible = false;
-                if (isIce && timeline.time() > 0.008 && timeline.time() < SMOKE_DURATION) {
+                if (hasFog && timeline.time() > 0.008 && timeline.time() < SMOKE_DURATION) {
                     hiddenForDepth.length = 0;
-                    const cardOpaque = ice!.cardDepthVisible || (frontMaterial.opacity >= 0.999 && backMaterial.opacity >= 0.999);
+                    const cardOpaque = fogEffect!.cardDepthVisible || (frontMaterial.opacity >= 0.999 && backMaterial.opacity >= 0.999);
                     for (const object of [cardOpaque ? undefined : card, psychic.root, electric?.root, grass?.root, fire?.root, water?.root]) {
                         if (object?.visible) { hiddenForDepth.push(object); object.visible = false; }
                     }
@@ -206,7 +210,7 @@ export const sceneController = {
                         scene.background = null;
                         meshes.forEach(mesh => { mesh.material = Array.isArray(mesh.material) ? mesh.material.map(depthFor) : depthFor(mesh.material); });
                         renderer.setRenderTarget(depthTarget);
-                        ice!.withFogDepth(() => renderer.render(scene, camera));
+                        fogEffect!.withFogDepth(() => renderer.render(scene, camera));
                     } finally {
                         meshes.forEach((mesh, i) => { mesh.material = saved[i]!; });
                         renderer.setRenderTarget(null);
@@ -214,7 +218,7 @@ export const sceneController = {
                         hiddenForDepth.forEach(object => { object.visible = true; });
                     }
                 }
-                if (isIce) {
+                if (hasFog) {
                     if (mist instanceof GpuSmokeMist) {
                         glb.scene.updateWorldMatrix(true, true);
                         mist.setOcclusionRevision(occluders.map(object => {
@@ -223,14 +227,14 @@ export const sceneController = {
                             return [object.visible, ...object.matrixWorld.elements, geometry?.id,
                                 position instanceof THREE.InterleavedBufferAttribute ? position.data.version : position?.version, geometry?.index?.version,
                                 geometry?.drawRange.start, geometry?.drawRange.count].join(',');
-                        }).join(';') + `:${ice!.fogDepthRevision}:${card.visible}:${frontMaterial.opacity}:${card.matrixWorld.elements.join(',')}`);
+                        }).join(';') + `:${fogEffect!.fogDepthRevision}:${card.visible}:${frontMaterial.opacity}:${card.matrixWorld.elements.join(',')}`);
                     }
                     renderer.getDrawingBufferSize(bufferSize);
                     mist.update(timeline.time(), Math.abs(lid.rotation.x-lidClosedX)/degrees(45), mistSource!, camera, depthTarget.depthTexture!);
                 }
             }
             renderer.render(scene, camera);
-            if (activeEffect === ice) mist?.render(renderer, camera);
+            if (fogEffect) mist?.render(renderer, camera);
             } finally {
                 if (frameTimingEnabled) frameTimer.end();
             }
@@ -254,15 +258,15 @@ export const sceneController = {
 
         const createTimeline = (reveal: RevealType) => {
             const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' ? SMOKE_OPENING.duration : 1.90;
+            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' ? SMOKE_OPENING.duration : 1.90;
             next.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             next.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
-            next.to(card.position, { y: reveal === 'water' || reveal === 'ice' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to(card.position, { y: reveal === 'water' || reveal === 'ice' || reveal === 'fighting' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
-            const cardScale = reveal === 'water' || reveal === 'ice' ? 0.94 : 1.18;
+            const cardScale = reveal === 'water' || reveal === 'ice' || reveal === 'fighting' ? 0.94 : 1.18;
             next.to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
-            next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.image);
+            next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: reveal === 'fighting' ? 'power4.out' : 'power2.inOut' }, CARD_REVEAL_TIMING.image);
             return next;
         };
         let timeline = createTimeline('psychic');
@@ -281,7 +285,7 @@ export const sceneController = {
             if (document.hidden) { timeline.pause(); running = false; renderer.setAnimationLoop(null); }
             else {
                 const epoch = playbackEpoch;
-                void (mist && activeEffect === ice ? mist.prepare(timeline.time()) : Promise.resolve()).then(() => {
+                void (mist && fogEffect ? mist.prepare(timeline.time()) : Promise.resolve()).then(() => {
                     if (!disposed && epoch === playbackEpoch && !document.hidden) {
                         render();
                         if (playbackWanted) { timeline.play(); startRender(); }
@@ -300,7 +304,7 @@ export const sceneController = {
                     const epoch = ++playbackEpoch;
                     playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
                     timeline.pause();
-                    if (mist instanceof GpuSmokeMist && activeEffect === ice) await mist.prepare(time);
+                    if (mist instanceof GpuSmokeMist && fogEffect) await mist.prepare(time);
                     if (disposed || epoch !== playbackEpoch) return;
                     timeline.pause(0, true);
                     activeEffect.reset();
@@ -325,6 +329,7 @@ export const sceneController = {
                         cardScale: card.scale.x,
                         frameGpu: frameTimer.stats(),
                         renderedFrames,
+                        fighting: fighting?.getDebugInfo(),
                         mist: mist ? { visible:mist.mesh.visible,kind:'gpu',...mist.getDebugInfo() } : undefined,
                     };
                 },
@@ -400,11 +405,20 @@ export const sceneController = {
                 if (reveal === 'ice' && !ice) {
                     ice = new IceEffect(card, skyEnvironment, renderer, window.innerWidth < 700);
                     glb.scene.add(ice.root);
+                }
+                if (reveal === 'fighting' && !fighting) {
+                    fighting = new FightingEffect(card, window.innerWidth < 700);
+                    glb.scene.add(fighting.root);
+                }
+                if ((reveal === 'ice' || reveal === 'fighting') && !fogVolumes.has(reveal)) {
                     mist = new GpuSmokeMist(renderer,camera,smokeBoundary,window.innerWidth<700,
-                        import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay');
+                        import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay', reveal);
+                    fogVolumes.set(reveal, mist);
+                }
+                if ((reveal === 'ice' || reveal === 'fighting') && !depthTarget) {
                     // Preserve the root-space opening coordinates while following the actual bottom node.
                     mistSource = new THREE.Object3D();
-                    mistSource.name = 'IceMistSource';
+                    mistSource.name = 'BowlMistSource';
                     glb.scene.add(mistSource);
                     const bowl = glb.scene.getObjectByName('bottom_low001')
                         ?? glb.scene.getObjectByName('bottom_low001_pokeball_0');
@@ -418,7 +432,9 @@ export const sceneController = {
                 }
                 activeEffect.setActive(false);
                 activeEffect = reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
-                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : psychic;
+                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'fighting' ? fighting! : psychic;
+                fogEffect = reveal === 'ice' ? ice : reveal === 'fighting' ? fighting : undefined;
+                mist = reveal === 'ice' || reveal === 'fighting' ? fogVolumes.get(reveal) : undefined;
                 revealFill.color.copy(activeEffect.fillLightColor);
                 revealFill.position.copy(activeEffect.fillLightPosition);
                 activeEffect.setActive(true);
@@ -430,16 +446,17 @@ export const sceneController = {
                 card.scale.setScalar(0.26);
                 frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
                 timeline = createTimeline(reveal);
-                if (mist && reveal === 'ice') {
+                if (mist && fogEffect) {
                     await mist.prepare(0);
                     if (disposed || epoch !== playbackEpoch) return;
                     mist.reset();
-                    if (!icePrepared) {
-                        await renderer.compileAsync(ice!.root, camera, scene);
+                    if (!preparedFog.has(fogEffect)) {
+                        if (reveal === 'ice') await renderer.compileAsync(ice!.root, camera, scene);
+                        else await renderer.compileAsync(fogEffect.root, camera, scene);
                         if (disposed || epoch !== playbackEpoch) return;
                         await renderer.compileAsync(card, camera, scene);
                         if (disposed || epoch !== playbackEpoch) return;
-                        await ice!.compileFogDepth(renderer, camera, scene);
+                        await fogEffect.compileFogDepth(renderer, camera, scene);
                         if (disposed || epoch !== playbackEpoch) return;
                         for (const object of [...occluders, card]) {
                             if (!(object instanceof THREE.Mesh)) continue;
@@ -454,7 +471,7 @@ export const sceneController = {
                         }
                         await mist.warmup();
                         if (disposed || epoch !== playbackEpoch) return;
-                        icePrepared = true;
+                        preparedFog.add(fogEffect);
                     }
                 }
                 if (disposed || epoch !== playbackEpoch) return;
@@ -490,7 +507,8 @@ export const sceneController = {
                 fire?.dispose();
                 water?.dispose();
                 ice?.dispose();
-                mist?.dispose();
+                fighting?.dispose();
+                fogVolumes.forEach(volume => volume.dispose());
                 depthTarget?.dispose();
                 depthMaterials.forEach(material => material.dispose());
                 card.geometry.dispose();
