@@ -102,7 +102,7 @@ try {
     }
     for (const c of [card('Eevee',133),card('Ditto',132),card('Galarian Farfetch’d',83),card('M Gyarados EX',130),card('M Charizard X EX',6),card('Shaymin',492),card('Rotom',479)]) assert.equal(isFlyingCard(c), false, c.name);
     for (const c of [card('Shaymin Sky Forme',492),card('Fan Rotom',479),card('Mega Pinsir',127),card('Mega Clefable',36)]) assert.equal(isFlyingCard(c), true, c.name);
-    for (const [c, type] of [[card('Charizard',6,['Fire']),'fire'],[card('Articuno',144,['Water']),'ice'],[card('Natu',177,['Psychic']),'psychic'],[card('Gligar',207,['Fighting']),'ground'],[card('Zubat',41,['Grass']),'poison'],[card('Butterfree',12,['Grass']),'grass'],[card('Zapdos',145,['Lightning']),'electric'],[card('Gyarados',130,['Water']),'water'],[card('Hawlucha',701,['Fighting']),'fighting']]) assert.equal(revealTypeForCard(c), type, c.name);
+    for (const [c, type] of [[card('Charizard',6,['Fire']),'fire'],[card('Articuno',144,['Water']),'ice'],[card('Natu',177,['Psychic']),'psychic'],[card('Gligar',207,['Fighting']),'ground'],[card('Zubat',41,['Grass']),'poison'],[card('Butterfree',12,['Grass']),'bug'],[card('Zapdos',145,['Lightning']),'electric'],[card('Gyarados',130,['Water']),'water'],[card('Hawlucha',701,['Fighting']),'fighting']]) assert.equal(revealTypeForCard(c), type, c.name);
     report.scenarios.push('Species, named forms, missing Dex IDs, non-Flying Colorless and existing type precedence');
 
     for (const [profile, width, height, count, bands] of [['desktop',1280,900,6,3],['mobile',390,844,4,2]]) {

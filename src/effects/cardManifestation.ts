@@ -33,6 +33,11 @@ const fragmentShader = /* glsl */ `
         float orb = length(p) - 0.42;
         float card = roundedBox(p, vec2(0.35, 0.50), 0.045);
         float distanceToShape = mix(orb, card, smoothstep(0.0, 1.0, uMorph));
+        #ifdef BUG_DEPTH
+        if (distanceToShape > -0.008) discard;
+        gl_FragColor = vec4(0.0);
+        return;
+        #endif
         float edge = exp(-abs(distanceToShape) * 43.0);
         float halo = exp(-abs(distanceToShape) * 10.0);
         float fill = 1.0 - smoothstep(-0.03, 0.035, distanceToShape);
@@ -94,6 +99,7 @@ export class CardManifestation {
     private readonly frozenMaterials: THREE.MeshBasicMaterial[] = [];
     private readonly iceImage = { value: 0 };
     private active = false;
+    private readonly bugDepth?: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
 
     constructor(card: THREE.Mesh, palette: RevealPalette = 'psychic', environment?: THREE.Texture) {
         this.card = card;
@@ -133,6 +139,21 @@ export class CardManifestation {
         this.mesh.position.z = 0.025;
         this.mesh.renderOrder = 4;
         this.root.add(this.mesh);
+        if (palette === 'bug') {
+            material.uniforms.uBase.value = new THREE.Color(0xc2e52d);
+            material.uniforms.uHot.value = new THREE.Color(0xffffc5);
+            material.defines.GRASS = 1;
+            const depth = material.clone();
+            depth.uniforms = material.uniforms;
+            depth.defines = { BUG_DEPTH: 1 };
+            depth.colorWrite = false; depth.depthWrite = true;
+            this.bugDepth = new THREE.Mesh(geometry, depth);
+            this.bugDepth.name = 'BugCardDepth';
+            this.bugDepth.position.z = -0.015;
+            this.bugDepth.renderOrder = 0;
+            this.bugDepth.visible = false;
+            this.root.add(this.bugDepth);
+        }
 
 
         const canvas = document.createElement('canvas');
@@ -148,6 +169,11 @@ export class CardManifestation {
         context.shadowColor = palette === 'flying' ? '#85b6ff' : palette === 'ground' ? '#d89534' : palette === 'fighting' ? '#ee2105' : palette === 'ice' ? '#82dcff' : palette === 'water' ? '#159bff' : electric ? '#ffb800' : palette === 'grass' ? '#82db35'
             : palette === 'fire' ? '#d71908' : '#d86cff';
         context.shadowBlur = palette === 'grass' ? 20 : palette === 'fire' ? 22 : 26;
+        if (palette === 'bug') {
+            context.strokeStyle = 'rgba(202, 235, 48, 0.45)';
+            context.shadowColor = '#c5e831';
+            context.shadowBlur = 18;
+        }
         context.lineWidth = palette === 'grass' ? 7 : 9;
         context.stroke();
         context.shadowBlur = 9;
@@ -155,6 +181,7 @@ export class CardManifestation {
             ? 'rgba(237, 255, 190, 0.76)' : palette === 'fire'
                 ? 'rgba(255, 184, 75, 0.90)' : 'rgba(255, 233, 255, 0.92)';
         context.lineWidth = palette === 'grass' || palette === 'fire' ? 2 : 3;
+        if (palette === 'bug') context.strokeStyle = 'rgba(255, 255, 198, 0.72)';
         context.stroke();
         const glowTexture = new THREE.CanvasTexture(canvas);
         glowTexture.colorSpace = THREE.SRGBColorSpace;
@@ -202,12 +229,15 @@ export class CardManifestation {
         uniforms.uCorners.value = corners;
         if (uniforms.uElectricActivity) uniforms.uElectricActivity.value = electricActivity;
         this.mesh.visible = opacity > 0.001 || electricActivity > 0.001;
+        if (this.bugDepth) this.bugDepth.visible = this.active && morph > 0.02;
         const frozenGlow = this.frozenMaterials.length ? THREE.MathUtils.smoothstep(time, 1.45, 1.7) : 0;
         this.glow.material.opacity = Math.max(cardImage, frozenGlow) * 0.64;
+        if (this.bugDepth) this.glow.material.opacity *= 0.58;
         this.glow.visible = this.glow.material.opacity > 0.001;
     }
 
     dispose(): void {
+        this.bugDepth?.material.dispose();
         if (this.frozenMaterials.length && this.card.material === this.frozenMaterials) this.card.material = this.originalMaterials;
         this.frozenMaterials.forEach(material => material.dispose());
         this.root.removeFromParent();

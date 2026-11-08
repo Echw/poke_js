@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 import { fightingImpulse } from './smokeProfile';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug';
 
 /** Shared handoff times, in seconds from the Ball opening. */
 export const CARD_REVEAL_TIMING = {
@@ -192,6 +192,15 @@ export class CardTransformation {
                 mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
         );
         this.core.position.set(0, -0.07, palette === 'flying' || palette === 'ice' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
+        if (palette === 'bug') {
+            coreMaterial.side = THREE.FrontSide;
+            coreMaterial.uniforms.uBase.value = new THREE.Color(0xc0df28);
+            coreMaterial.uniforms.uHot.value = new THREE.Color(0xffffce);
+            coreMaterial.uniforms.uRim.value = new THREE.Color(0x61790c);
+            this.core.geometry.dispose();
+            this.core.geometry = new THREE.SphereGeometry(0.045, mobile ? 20 : 32, mobile ? 14 : 24);
+            this.core.position.set(0, -0.07, 0.38);
+        }
         if (palette === 'fighting') {
             coreMaterial.uniforms.uBase.value = new THREE.Color(0xff3209);
             coreMaterial.uniforms.uHot.value = new THREE.Color(0xffe6a3);
@@ -251,6 +260,13 @@ export class CardTransformation {
                 forceSinglePass: true,
             });
             const glow = new THREE.Mesh(geometry, material);
+            if (palette === 'bug') {
+                material.uniforms.uColor.value = new THREE.Color(0xd6ef38);
+                material.uniforms.uCenterSharpness.value = 28;
+                material.uniforms.uHaloStrength.value = 0.24;
+                material.depthTest = true;
+                glow.scale.setScalar(0.82);
+            }
             if (palette === 'water') glow.renderOrder = 3.3;
             this.root.add(glow);
             this.glows.push(glow);

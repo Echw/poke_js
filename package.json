@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:bug": "node scripts/verify-bug.mjs",
+    "test:types": "node scripts/verify-reveal-types.mjs",
+    "types:generate": "node scripts/generate-pokemon-types.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

@@ -39,3 +39,19 @@ The subsequent dry-ice revision uses the [SideFX Dry Ice example](https://www.si
 The Ground development preview uses the actual Sandshrew card, base1-62, downloaded from https://assets.tcgdex.net/en/base/base1/62/high.webp, under the same artwork ownership notice. Primary Ground species and forms were verified against https://pokeapi.co/api/v2/type/ground on 2026-11-08. Ground geometry is procedural; the supplied storyboard is a visual reference, not a runtime texture.
 
 Ground revision 3 uses color, roughness and height textures supplied by the user from `Downloads/rocks_ground_02_4k.blend/textures`. Browser derivatives are `public/textures/ground/rock-color.webp` and `rock-surface.webp` (height/roughness packed into red/green). The local folder did not include a license notice; no software license above is asserted for these user-provided images. Original files are unchanged.
+
+The Bug development preview uses the actual Caterpie card, base1-45, downloaded from https://assets.tcgdex.net/en/base/base1/45/high.webp, under the same artwork ownership notice. Its ribbons, membranes, veins and firefly glow are procedural; the supplied storyboard is not used as a runtime texture.
+
+The ordered species/form type catalog is derived from [PokeAPI data revision 6ea97b5641faa12e090866e8144ae8f57764fc64](https://github.com/PokeAPI/pokeapi/tree/6ea97b5641faa12e090866e8144ae8f57764fc64/data/v2/csv). The upstream BSD-3-Clause notice follows:
+
+Copyright (c) © 2013–2023 Paul Hallett and PokéAPI contributors (https://github.com/PokeAPI/pokeapi#contributing). Pokémon and Pokémon character names are trademarks of Nintendo.
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+* Neither the name of PokéAPI nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

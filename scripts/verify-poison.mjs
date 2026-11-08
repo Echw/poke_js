@@ -66,13 +66,13 @@ function verifyEvents() {
     for (const [name, id, energy, expected] of [
         ['Koffing',109,'Grass','poison'], ['Koffing',109,'Psychic','poison'], ['Koffing',109,'Darkness','poison'],
         ['Bulbasaur',1,'Grass','grass'], ['Ivysaur',2,'Grass','grass'], ['Venusaur',3,'Grass','grass'],
-        ['Oddish',43,'Grass','grass'], ['Beedrill',15,'Grass','grass'], ['Gengar',94,'Psychic','psychic'],
+        ['Oddish',43,'Grass','grass'], ['Beedrill',15,'Grass','bug'], ['Gengar',94,'Psychic','poison'],
         ['Tentacruel',73,'Water','water'], ['Toxtricity',849,'Lightning','electric'], ['Iron Moth',994,'Fire','fire'],
         ['Nidoking',34,'Fighting','poison'], ['Crobat',169,'Darkness','poison'], ['Skrelp',690,'Water','poison'],
         ['Galarian Slowbro',80,'Darkness','poison'], ['Slowbro',80,'Water','water'],
         ['Galarian Slowking',199,'Psychic','poison'], ['Slowking',199,'Water','water'],
-        ['Hisuian Sneasel',215,'Fighting','psychic'], ['Sneasel',215,'Darkness','ice'],
-        ['Sneasler',903,'Fighting','fighting'], ['Hisuian Qwilfish',211,'Darkness','psychic'],
+        ['Hisuian Sneasel',215,'Fighting','fighting'], ['Sneasel',215,'Darkness','ice'],
+        ['Sneasler',903,'Fighting','fighting'], ['Hisuian Qwilfish',211,'Darkness','poison'],
         ['Paldean Wooper',194,'Fighting','poison'], ['Wooper',194,'Water','water'],
         ['Galarian Weezing',110,'Darkness','poison'], ['Alolan Muk',89,'Darkness','poison'],
         ['Chikorita',152,'Grass','grass'], ['Glaceon',471,'Water','ice'], ['Machop',66,'Fighting','fighting'],
@@ -85,7 +85,7 @@ function verifyEvents() {
     for (const [name, energy, expected] of [
         ['Bulbasaur','Grass','grass'], ['Ivysaur','Grass','grass'], ['Venusaur ex','Grass','grass'],
         ['Radiant Venusaur','Grass','grass'], ['M Venusaur EX','Grass','grass'], ['Erika’s Bulbasaur','Grass','grass'],
-        ['Gengar VMAX','Psychic','psychic'], ['Toxtricity V','Lightning','electric'],
+        ['Gengar VMAX','Psychic','poison'], ['Toxtricity V','Lightning','electric'],
         ['Hisuian Sneasel','Fighting','fighting'], ['Slowbro','Water','water'], ['Wooper','Water','water'],
         ['Unknown Pokémon','Grass','grass'], ['Unknown Pokémon','Metal','psychic'],
     ]) {

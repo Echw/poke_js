@@ -1,4 +1,5 @@
 import { GroundEffect } from '../effects/ground';
+import { BugEffect } from '../effects/bug';
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
@@ -137,6 +138,7 @@ export const sceneController = {
         glb.scene.add(psychic.root);
         let electric: ElectricEffect | undefined;
         let grass: GrassEffect | undefined;
+        let bug: BugEffect | undefined;
         let flying: FlyingEffect | undefined;
         let fire: FireEffect | undefined;
         let water: WaterEffect | undefined;
@@ -196,7 +198,7 @@ export const sceneController = {
             activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
             card.visible = true;
             revealFill.intensity = activeEffect.fillLightIntensity;
-            if (activeEffect === flying || activeEffect === water || fogEffect) {
+            if (activeEffect === bug || activeEffect === flying || activeEffect === water || fogEffect) {
                 glb.scene.updateWorldMatrix(true, false);
                 revealFill.position.copy(activeEffect.fillLightPosition).applyMatrix4(glb.scene.matrixWorld);
             }
@@ -206,7 +208,7 @@ export const sceneController = {
                 if (hasFog && timeline.time() > 0.008 && timeline.time() < SMOKE_DURATION) {
                     hiddenForDepth.length = 0;
                     const cardOpaque = fogEffect!.cardDepthVisible || (frontMaterial.opacity >= 0.999 && backMaterial.opacity >= 0.999);
-                    for (const object of [cardOpaque ? undefined : card, psychic.root, electric?.root, grass?.root, flying?.root, fire?.root, water?.root]) {
+                    for (const object of [cardOpaque ? undefined : card, psychic.root, electric?.root, grass?.root, bug?.root, flying?.root, fire?.root, water?.root]) {
                         if (object?.visible) { hiddenForDepth.push(object); object.visible = false; }
                     }
                     const background = scene.background;
@@ -268,9 +270,9 @@ export const sceneController = {
             next.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             next.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
-            next.to(card.position, { y: reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to(card.position, { y: reveal === 'bug' || reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
-            const cardScale = reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? 0.94 : 1.18;
+            const cardScale = reveal === 'bug' || reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? 0.94 : 1.18;
             next.to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: reveal === 'fighting' ? 'power4.out' : reveal === 'ground' ? 'power3.out' : 'power2.inOut' }, CARD_REVEAL_TIMING.image);
             return next;
@@ -336,6 +338,7 @@ export const sceneController = {
                         frameGpu: frameTimer.stats(),
                         renderedFrames,
                         flying: flying?.getDebugInfo(),
+                        bug: bug?.getDebugInfo(),
                         fighting: fighting?.getDebugInfo(),
                         ground: ground?.getDebugInfo(),
                         poison: poison?.getDebugInfo(),
@@ -404,6 +407,10 @@ export const sceneController = {
                     grass.root.traverse((object) => { object.renderOrder = 2; });
                     glb.scene.add(grass.root);
                 }
+                if (reveal === 'bug' && !bug) {
+                    bug = new BugEffect(card, window.innerWidth < 700);
+                    glb.scene.add(bug.root);
+                }
                 if (reveal === 'flying' && !flying) {
                     flying = new FlyingEffect(card, window.innerWidth < 700);
                     glb.scene.add(flying.root);
@@ -454,7 +461,7 @@ export const sceneController = {
                     });
                 }
                 activeEffect.setActive(false);
-                activeEffect = reveal === 'flying' ? flying! : reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
+                activeEffect = reveal === 'bug' ? bug! : reveal === 'flying' ? flying! : reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
                     : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'ground' ? ground! : reveal === 'fighting' ? fighting! : reveal === 'poison' ? poison! : psychic;
                 fogEffect = reveal === 'ice' ? ice : reveal === 'ground' ? ground : reveal === 'fighting' ? fighting : reveal === 'poison' ? poison : undefined;
                 mist = reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' ? fogVolumes.get(reveal) : undefined;
@@ -536,6 +543,7 @@ export const sceneController = {
                 psychic.dispose();
                 electric?.dispose();
                 grass?.dispose();
+                bug?.dispose();
                 flying?.dispose();
                 fire?.dispose();
                 water?.dispose();

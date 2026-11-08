@@ -1,4 +1,5 @@
 import { isFlyingCard } from './flyingSpecies.ts';
+import { speciesRevealType } from './pokemonTypes.ts';
 import { isGroundCard } from './groundSpecies.ts';
 import { isPoisonCard } from './poisonSpecies.ts';
 import type { RevealType } from '../effects/types';
@@ -25,6 +26,8 @@ const ICE_NAMES = /\b(glaceon|ice rider calyrex|black kyurem|white kyurem)\b/i;
 
 /** Resolve the actual selected species/form; Water energy alone never selects Ice. */
 export function revealTypeForCard(card: CardSelection): RevealType {
+    const speciesType = speciesRevealType(card);
+    if (speciesType) return speciesType;
     if (isPoisonCard(card)) return 'poison';
     const name = card.name.toLowerCase();
     // Galarian Articuno and Hisuian Sneasel change away from their original Ice typing.

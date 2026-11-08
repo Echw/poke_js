@@ -7,6 +7,7 @@ type Scene = Awaited<ReturnType<typeof sceneController.initScene>>;
 
 async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => boolean): Promise<boolean> {
     if (!isCurrent()) return false;
+    if (imageBase.startsWith('/textures/')) return scene.setCardImage(imageBase);
     try {
         return await scene.setCardImage(`${imageBase}/high.webp`);
     } catch (error) {
@@ -19,10 +20,10 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 async function start() {
     const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
     const requestedReveal = previewParams?.get('reveal');
-    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying'] as const).find(
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug'] as const).find(
               (type) => type === requestedReveal,
           );
-    const initialName = previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
+    const initialName = previewReveal === 'bug' ? 'Caterpie' : previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -33,7 +34,9 @@ async function start() {
 
     let cardRequestId = 0;
     const initialCard = (
-        previewReveal === 'flying'
+        previewReveal === 'bug'
+            ? Promise.resolve({ name: 'Caterpie', image: '/textures/caterpie-preview.webp', types: ['Grass'], dexId: [10] })
+            : previewReveal === 'flying'
             ? Promise.resolve({ name: 'Pidgeotto', image: 'https://assets.tcgdex.net/en/base/base1/22', types: ['Colorless'], dexId: [17] })
             : previewReveal === 'ground'
             ? Promise.resolve({ name: 'Sandshrew', image: 'https://assets.tcgdex.net/en/base/base1/62', types: ['Fighting'], dexId: [27] })
