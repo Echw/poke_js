@@ -1,3 +1,4 @@
+import { isFlyingCard } from './flyingSpecies.ts';
 import { isGroundCard } from './groundSpecies.ts';
 import { isPoisonCard } from './poisonSpecies.ts';
 import type { RevealType } from '../effects/types';
@@ -48,5 +49,5 @@ export function revealTypeForCard(card: CardSelection): RevealType {
             ? 'fire'
             : card.types.includes('Water')
               ? 'water'
-              : 'psychic';
+              : !card.types.includes('Psychic') && isFlyingCard(card) ? 'flying' : 'psychic';
 }

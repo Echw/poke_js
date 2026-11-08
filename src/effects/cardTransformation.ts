@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 import { fightingImpulse } from './smokeProfile';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying';
 
 /** Shared handoff times, in seconds from the Ball opening. */
 export const CARD_REVEAL_TIMING = {
@@ -167,11 +167,11 @@ export class CardTransformation {
             uniforms: {
                 uTime: { value: 0 }, uOpacity: { value: 0 },
                 uBase: { value: psychic ? new THREE.Vector3(0.55, 0.19, 0.91)
-                    : new THREE.Color(palette === 'ground' ? 0xd9973c : palette === 'poison' ? 0x70139b : palette === 'ice' ? 0x68c9ed : palette === 'water' ? 0x188cff : palette === 'electric' ? 0xffe788 : palette === 'fire' ? 0xff8a16 : 0x71d645) },
+                    : new THREE.Color(palette === 'flying' ? 0x86b6ff : palette === 'ground' ? 0xd9973c : palette === 'poison' ? 0x70139b : palette === 'ice' ? 0x68c9ed : palette === 'water' ? 0x188cff : palette === 'electric' ? 0xffe788 : palette === 'fire' ? 0xff8a16 : 0x71d645) },
                 uHot: { value: psychic ? new THREE.Vector3(1.0, 0.88, 1.0)
-                    : new THREE.Color(palette === 'ground' ? 0xffe3a3 : palette === 'poison' ? 0xffceff : palette === 'water' ? 0xddfaff : palette === 'grass' ? 0xfcfff2 : palette === 'fire' ? 0xfff0b0 : 0xffffff) },
+                    : new THREE.Color(palette === 'flying' ? 0xf5f9ff : palette === 'ground' ? 0xffe3a3 : palette === 'poison' ? 0xffceff : palette === 'water' ? 0xddfaff : palette === 'grass' ? 0xfcfff2 : palette === 'fire' ? 0xfff0b0 : 0xffffff) },
                 uRim: { value: psychic ? new THREE.Vector3(0.33, 0.17, 0.48)
-                    : new THREE.Color(palette === 'ground' ? 0x753509 : palette === 'poison' ? 0xa521d5 : palette === 'ice' ? 0x2e89b6 : palette === 'water' ? 0x004ba8 : palette === 'electric' ? 0x703000 : palette === 'fire' ? 0xd71908 : 0x236818) },
+                    : new THREE.Color(palette === 'flying' ? 0x546fae : palette === 'ground' ? 0x753509 : palette === 'poison' ? 0xa521d5 : palette === 'ice' ? 0x2e89b6 : palette === 'water' ? 0x004ba8 : palette === 'electric' ? 0x703000 : palette === 'fire' ? 0xd71908 : 0x236818) },
             },
             vertexShader: coreVertex,
             fragmentShader: coreFragment,
@@ -188,10 +188,10 @@ export class CardTransformation {
             ...(psychic ? {} : { toneMapped: false }),
         });
         this.core = new THREE.Mesh(
-            new THREE.SphereGeometry(palette === 'ground' ? 0.045 : palette === 'poison' ? 0.045 : palette === 'ice' ? 0.055 : palette === 'water' ? 0.065 : palette === 'fire' ? 0.085 : 0.13,
+            new THREE.SphereGeometry(palette === 'flying' ? 0.05 : palette === 'ground' ? 0.045 : palette === 'poison' ? 0.045 : palette === 'ice' ? 0.055 : palette === 'water' ? 0.065 : palette === 'fire' ? 0.085 : 0.13,
                 mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
         );
-        this.core.position.set(0, -0.07, palette === 'ice' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
+        this.core.position.set(0, -0.07, palette === 'flying' || palette === 'ice' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
         if (palette === 'fighting') {
             coreMaterial.uniforms.uBase.value = new THREE.Color(0xff3209);
             coreMaterial.uniforms.uHot.value = new THREE.Color(0xffe6a3);
@@ -209,9 +209,9 @@ export class CardTransformation {
             this.addPsychicGlow(-0.05, 0.30, 0.82, 0xefa4ff, false);
             this.addPsychicGlow(-0.10, 0.14, 1.30, 0xa855f7, true);
         } else {
-            const front = new THREE.PlaneGeometry(palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.58 : 0.82, palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.58 : 0.82);
-            front.translate(0, -0.05, palette === 'ice' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.39 : 0.30);
-            const pool = new THREE.PlaneGeometry(palette === 'water' || palette === 'ground' || palette === 'poison' ? 1.05 : 1.30, palette === 'water' || palette === 'ground' || palette === 'poison' ? 1.05 : 1.30);
+            const front = new THREE.PlaneGeometry(palette === 'flying' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.58 : 0.82, palette === 'flying' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.58 : 0.82);
+            front.translate(0, -0.05, palette === 'flying' || palette === 'ice' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.39 : 0.30);
+            const pool = new THREE.PlaneGeometry(palette === 'flying' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 1.05 : 1.30, palette === 'flying' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 1.05 : 1.30);
             pool.rotateX(-Math.PI / 2);
             pool.translate(0, -0.10, 0.14);
             const layers: THREE.PlaneGeometry[] = [front, pool];
@@ -229,12 +229,12 @@ export class CardTransformation {
             if (!geometry) throw new Error('Energy source glow geometry unavailable');
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uColor: { value: new THREE.Color(palette === 'ground' ? 0xffb64b : palette === 'poison' ? 0xc32aff : palette === 'fighting' ? 0xff3108 : palette === 'ice' ? 0x7ad8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffc72b : palette === 'fire' ? 0xff4a08 : 0x9ced5f) },
+                    uColor: { value: new THREE.Color(palette === 'flying' ? 0x93bdff : palette === 'ground' ? 0xffb64b : palette === 'poison' ? 0xc32aff : palette === 'fighting' ? 0xff3108 : palette === 'ice' ? 0x7ad8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffc72b : palette === 'fire' ? 0xff4a08 : 0x9ced5f) },
                     ...(palette === 'fire' ? { uFireWarm: { value: new THREE.Color(0xff8a16) } } : {}),
                     uOpacity: { value: 0 }, uTime: { value: 0 },
-                    uCenterSharpness: { value: palette === 'ground' ? 28 : palette === 'poison' ? 28 : palette === 'fighting' ? 22 : palette === 'fire' ? 16 : 8 },
+                    uCenterSharpness: { value: palette === 'flying' ? 24 : palette === 'ground' ? 28 : palette === 'poison' ? 28 : palette === 'fighting' ? 22 : palette === 'fire' ? 16 : 8 },
                     uHaloSharpness: { value: palette === 'ice' ? 3.4 : palette === 'fire' ? 3.2 : 2.2 },
-                    uHaloStrength: { value: palette === 'ground' ? 0.22 : palette === 'poison' ? 0.18 : palette === 'fighting' ? 0.16 : palette === 'ice' ? 0.68 : palette === 'water' ? 0.38 : palette === 'fire' ? 0.28 : 0.56 },
+                    uHaloStrength: { value: palette === 'flying' ? 0.30 : palette === 'ground' ? 0.22 : palette === 'poison' ? 0.18 : palette === 'fighting' ? 0.16 : palette === 'ice' ? 0.68 : palette === 'water' ? 0.38 : palette === 'fire' ? 0.28 : 0.56 },
                     ...(palette === 'ice' ? { uIceCore: { value: 1.8 } } : {}),
                 },
                 vertexShader: glowVertex,
@@ -245,7 +245,7 @@ export class CardTransformation {
                         : { COLOR_MANAGED: 1 },
                 transparent: true,
                 blending: THREE.AdditiveBlending,
-                depthTest: palette === 'water' || palette === 'ice' || palette === 'fighting' || palette === 'ground' || palette === 'poison',
+                depthTest: palette === 'flying' || palette === 'water' || palette === 'ice' || palette === 'fighting' || palette === 'ground' || palette === 'poison',
                 depthWrite: false,
                 side: THREE.DoubleSide,
                 forceSinglePass: true,

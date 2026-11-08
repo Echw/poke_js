@@ -111,15 +111,15 @@ export class CardManifestation {
                 uTime: { value: 0 }, uMorph: { value: 0 }, uOpacity: { value: 0 },
                 uFill: { value: 1 }, uCorners: { value: 0 },
                 uBase: { value: palette === 'psychic' ? new THREE.Vector3(0.76, 0.35, 1.0)
-                    : new THREE.Color(palette === 'ground' ? 0xe2a045 : palette === 'poison' ? 0xbd21f5 : palette === 'fighting' ? 0xff390b : palette === 'ice' ? 0x80d8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
+                    : new THREE.Color(palette === 'flying' ? 0x8ab9ff : palette === 'ground' ? 0xe2a045 : palette === 'poison' ? 0xbd21f5 : palette === 'fighting' ? 0xff390b : palette === 'ice' ? 0x80d8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
                 uHot: { value: palette === 'psychic' ? new THREE.Vector3(1.0, 0.89, 1.0)
-                    : new THREE.Color(palette === 'ground' ? 0xffe6ad : palette === 'poison' ? 0xffddff : palette === 'fighting' ? 0xffd28a : palette === 'ice' ? 0xebfbff : palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
+                    : new THREE.Color(palette === 'flying' ? 0xf3f8ff : palette === 'ground' ? 0xffe6ad : palette === 'poison' ? 0xffddff : palette === 'fighting' ? 0xffd28a : palette === 'ice' ? 0xebfbff : palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
                 ...(electric ? {
                     uElectricActivity: { value: 0 },
                 } : {}),
             },
             defines: electric ? { ELECTRIC: 1 } : palette === 'grass' ? { GRASS: 1 }
-                : palette === 'poison' ? { POISON: 1 } : palette === 'fighting' ? { FIGHTING: 1 } : palette === 'fire' ? { FIRE: 1 } : palette === 'water' || palette === 'ice' || palette === 'ground' ? { WATER: 1 } : {},
+                : palette === 'poison' ? { POISON: 1 } : palette === 'fighting' ? { FIGHTING: 1 } : palette === 'fire' ? { FIRE: 1 } : palette === 'flying' || palette === 'water' || palette === 'ice' || palette === 'ground' ? { WATER: 1 } : {},
             vertexShader,
             fragmentShader,
             transparent: true,
@@ -142,16 +142,16 @@ export class CardManifestation {
         if (!context) throw new Error('Card glow canvas unavailable');
         context.beginPath();
         context.roundRect(47, 46, 162, 228, 12);
-        context.strokeStyle = palette === 'ground' ? 'rgba(235, 161, 64, 0.48)' : palette === 'fighting' ? 'rgba(255, 51, 8, 0.7)' : palette === 'ice' ? 'rgba(150, 225, 255, 0.55)' : palette === 'water' ? 'rgba(22, 162, 255, 0.55)' : electric ? 'rgba(255, 212, 0, 0.72)' : palette === 'grass'
+        context.strokeStyle = palette === 'flying' ? 'rgba(132, 181, 255, 0.48)' : palette === 'ground' ? 'rgba(235, 161, 64, 0.48)' : palette === 'fighting' ? 'rgba(255, 51, 8, 0.7)' : palette === 'ice' ? 'rgba(150, 225, 255, 0.55)' : palette === 'water' ? 'rgba(22, 162, 255, 0.55)' : electric ? 'rgba(255, 212, 0, 0.72)' : palette === 'grass'
             ? 'rgba(146, 238, 60, 0.54)' : palette === 'fire'
                 ? 'rgba(255, 74, 8, 0.70)' : 'rgba(207, 103, 255, 0.72)';
-        context.shadowColor = palette === 'ground' ? '#d89534' : palette === 'fighting' ? '#ee2105' : palette === 'ice' ? '#82dcff' : palette === 'water' ? '#159bff' : electric ? '#ffb800' : palette === 'grass' ? '#82db35'
+        context.shadowColor = palette === 'flying' ? '#85b6ff' : palette === 'ground' ? '#d89534' : palette === 'fighting' ? '#ee2105' : palette === 'ice' ? '#82dcff' : palette === 'water' ? '#159bff' : electric ? '#ffb800' : palette === 'grass' ? '#82db35'
             : palette === 'fire' ? '#d71908' : '#d86cff';
         context.shadowBlur = palette === 'grass' ? 20 : palette === 'fire' ? 22 : 26;
         context.lineWidth = palette === 'grass' ? 7 : 9;
         context.stroke();
         context.shadowBlur = 9;
-        context.strokeStyle = palette === 'ground' ? 'rgba(255, 222, 160, 0.75)' : palette === 'fighting' ? 'rgba(255, 190, 110, 0.9)' : palette === 'ice' || palette === 'water' ? 'rgba(215, 250, 255, 0.75)' : electric ? 'rgba(255, 253, 235, 0.92)' : palette === 'grass'
+        context.strokeStyle = palette === 'flying' ? 'rgba(236, 246, 255, 0.75)' : palette === 'ground' ? 'rgba(255, 222, 160, 0.75)' : palette === 'fighting' ? 'rgba(255, 190, 110, 0.9)' : palette === 'ice' || palette === 'water' ? 'rgba(215, 250, 255, 0.75)' : electric ? 'rgba(255, 253, 235, 0.92)' : palette === 'grass'
             ? 'rgba(237, 255, 190, 0.76)' : palette === 'fire'
                 ? 'rgba(255, 184, 75, 0.90)' : 'rgba(255, 233, 255, 0.92)';
         context.lineWidth = palette === 'grass' || palette === 'fire' ? 2 : 3;
