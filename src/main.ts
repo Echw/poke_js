@@ -1,6 +1,7 @@
-import './styles/main.scss'
+import './styles/main.scss';
 import { sceneController } from './scene/scene';
 import { fetchCard } from './data/tcgdex';
+import { revealTypeForCard } from './data/revealType';
 
 type Scene = Awaited<ReturnType<typeof sceneController.initScene>>;
 
@@ -18,10 +19,10 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 async function start() {
     const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
     const requestedReveal = previewParams?.get('reveal');
-    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water'] as const)
-        .find((type) => type === requestedReveal);
-    const previewTime = previewParams?.get('time');
-    const initialName = previewReveal === 'water' ? 'Squirtle' : 'Abra';
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice'] as const).find(
+              (type) => type === requestedReveal,
+          );
+    const initialName = previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -31,17 +32,26 @@ async function start() {
     if (!submitButton) throw new Error('Summon button not found');
 
     let cardRequestId = 0;
-    const initialCard = fetchCard(previewReveal === 'water' ? 'Squirtle' : undefined).catch((error) => {
+    const initialCard = (
+        previewReveal === 'ice'
+            ? Promise.resolve({
+                  name: 'Glaceon',
+                  image: 'https://assets.tcgdex.net/en/dp/dp5/5',
+                  types: ['Water'],
+                  dexId: [471],
+              })
+            : fetchCard(previewReveal === 'water' ? 'Squirtle' : undefined)
+    ).catch((error) => {
         console.error(`Could not fetch ${initialName}.`, error);
         return undefined;
     });
 
     try {
         const scene = await sceneController.initScene(canvas);
-        scene.play(previewReveal);
+        status.textContent = 'Przygotowywanie animacji…';
+        await scene.play(previewReveal);
         if (import.meta.env.DEV) {
             Object.assign(window, { __pokemonReveal: scene });
-            if (previewTime !== null && previewTime !== undefined) scene.debug?.seek(Number(previewTime));
         }
         submitButton.disabled = false;
         status.textContent = `Loading ${initialName}…`;
@@ -54,11 +64,15 @@ async function start() {
                 return;
             }
             try {
-                const applied = await loadCardImage(scene, selectedCard.image, () => cardRequestId === 0);
+                const applied =
+                    previewReveal === 'ice'
+                        ? await scene.setCardImage('/textures/glaceon-preview.webp')
+                        : await loadCardImage(scene, selectedCard.image, () => cardRequestId === 0);
                 if (cardRequestId === 0 && applied) status.textContent = '';
             } catch (error) {
                 console.error(`Could not load ${initialName} image.`, error);
-                if (cardRequestId === 0) status.textContent = `Could not load ${initialName}. Search to try again.`;
+                if (cardRequestId === 0)
+                    status.textContent = `Could not load ${initialName}. Search to try again.`;
             }
         })();
 
@@ -78,11 +92,9 @@ async function start() {
                 }
                 const applied = await loadCardImage(scene, selectedCard.image, isCurrent);
                 if (!isCurrent() || !applied) return;
-                status.textContent = '';
-                scene.play(selectedCard.types.includes('Lightning') ? 'electric'
-                    : selectedCard.types.includes('Grass') ? 'grass'
-                        : selectedCard.types.includes('Fire') ? 'fire'
-                            : selectedCard.types.includes('Water') ? 'water' : 'psychic');
+                status.textContent = 'Przygotowywanie animacji…';
+                await scene.play(revealTypeForCard(selectedCard));
+                if (isCurrent()) status.textContent = '';
             } catch (error) {
                 console.error('Could not load card.', error);
                 if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';

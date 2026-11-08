@@ -1,6 +1,6 @@
 type CardBrief = { id: string; name: string; image: string };
-export type CardSelection = { image: string; types: string[] };
-type CardDetail = { image: string; types?: string[] };
+export type CardSelection = { image: string; types: string[]; name: string; dexId: number[] };
+type CardDetail = { image: string; types?: string[]; name: string; dexId?: number[] };
 
 function isCardBrief(value: unknown): value is CardBrief {
     return value !== null && typeof value === 'object'
@@ -11,6 +11,8 @@ function isCardBrief(value: unknown): value is CardBrief {
 
 function isCardDetail(value: unknown): value is CardDetail {
     return value !== null && typeof value === 'object'
+        && 'name' in value && typeof value.name === 'string'
+        && (!('dexId' in value) || (Array.isArray(value.dexId) && value.dexId.every(id => typeof id === 'number')))
         && 'image' in value && typeof value.image === 'string'
         && (!('types' in value) || (Array.isArray(value.types) && value.types.every((type) => typeof type === 'string')));
 }
@@ -37,7 +39,7 @@ export async function fetchCard(name?: string): Promise<CardSelection | undefine
             detail = await detailResponse.json();
         }
         if (!isCardDetail(detail)) return undefined;
-        return { image: detail.image, types: detail.types ?? [] };
+        return { image: detail.image, types: detail.types ?? [], name: detail.name, dexId: detail.dexId ?? [] };
     } finally {
         window.clearTimeout(timeout);
     }

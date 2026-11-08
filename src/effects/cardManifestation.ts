@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { RevealPalette } from './cardTransformation';
+import { createFrozenCardMaterial } from './iceMaterial';
 
 const vertexShader = /* glsl */ `
     varying vec2 vUv;
@@ -80,8 +81,20 @@ export class CardManifestation {
     readonly root = new THREE.Group();
     readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
     private readonly glow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+    private readonly card: THREE.Mesh;
+    private readonly originalMaterials: THREE.Material | THREE.Material[];
+    private readonly frozenMaterials: THREE.MeshBasicMaterial[] = [];
+    private readonly iceImage = { value: 0 };
+    private active = false;
 
-    constructor(card: THREE.Mesh, palette: RevealPalette = 'psychic') {
+    constructor(card: THREE.Mesh, palette: RevealPalette = 'psychic', environment?: THREE.Texture) {
+        this.card = card;
+        this.originalMaterials = card.material;
+        if (palette === 'ice' && environment) {
+            const originals = Array.isArray(card.material) ? card.material : [card.material];
+            this.frozenMaterials.push(...originals.map(material =>
+                createFrozenCardMaterial(material as THREE.MeshBasicMaterial, environment, this.iceImage)));
+        }
         const electric = palette === 'electric';
         card.add(this.root);
         const geometry = new THREE.PlaneGeometry(1.20, 1.40);
@@ -90,15 +103,15 @@ export class CardManifestation {
                 uTime: { value: 0 }, uMorph: { value: 0 }, uOpacity: { value: 0 },
                 uFill: { value: 1 }, uCorners: { value: 0 },
                 uBase: { value: palette === 'psychic' ? new THREE.Vector3(0.76, 0.35, 1.0)
-                    : new THREE.Color(palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
+                    : new THREE.Color(palette === 'ice' ? 0x80d8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
                 uHot: { value: palette === 'psychic' ? new THREE.Vector3(1.0, 0.89, 1.0)
-                    : new THREE.Color(palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
+                    : new THREE.Color(palette === 'ice' ? 0xebfbff : palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
                 ...(electric ? {
                     uElectricActivity: { value: 0 },
                 } : {}),
             },
             defines: electric ? { ELECTRIC: 1 } : palette === 'grass' ? { GRASS: 1 }
-                : palette === 'fire' ? { FIRE: 1 } : palette === 'water' ? { WATER: 1 } : {},
+                : palette === 'fire' ? { FIRE: 1 } : palette === 'water' || palette === 'ice' ? { WATER: 1 } : {},
             vertexShader,
             fragmentShader,
             transparent: true,
@@ -121,16 +134,16 @@ export class CardManifestation {
         if (!context) throw new Error('Card glow canvas unavailable');
         context.beginPath();
         context.roundRect(47, 46, 162, 228, 12);
-        context.strokeStyle = palette === 'water' ? 'rgba(22, 162, 255, 0.55)' : electric ? 'rgba(255, 212, 0, 0.72)' : palette === 'grass'
+        context.strokeStyle = palette === 'ice' ? 'rgba(150, 225, 255, 0.55)' : palette === 'water' ? 'rgba(22, 162, 255, 0.55)' : electric ? 'rgba(255, 212, 0, 0.72)' : palette === 'grass'
             ? 'rgba(146, 238, 60, 0.54)' : palette === 'fire'
                 ? 'rgba(255, 74, 8, 0.70)' : 'rgba(207, 103, 255, 0.72)';
-        context.shadowColor = palette === 'water' ? '#159bff' : electric ? '#ffb800' : palette === 'grass' ? '#82db35'
+        context.shadowColor = palette === 'ice' ? '#82dcff' : palette === 'water' ? '#159bff' : electric ? '#ffb800' : palette === 'grass' ? '#82db35'
             : palette === 'fire' ? '#d71908' : '#d86cff';
         context.shadowBlur = palette === 'grass' ? 20 : palette === 'fire' ? 22 : 26;
         context.lineWidth = palette === 'grass' ? 7 : 9;
         context.stroke();
         context.shadowBlur = 9;
-        context.strokeStyle = palette === 'water' ? 'rgba(215, 250, 255, 0.75)' : electric ? 'rgba(255, 253, 235, 0.92)' : palette === 'grass'
+        context.strokeStyle = palette === 'ice' || palette === 'water' ? 'rgba(215, 250, 255, 0.75)' : electric ? 'rgba(255, 253, 235, 0.92)' : palette === 'grass'
             ? 'rgba(237, 255, 190, 0.76)' : palette === 'fire'
                 ? 'rgba(255, 184, 75, 0.90)' : 'rgba(255, 233, 255, 0.92)';
         context.lineWidth = palette === 'grass' || palette === 'fire' ? 2 : 3;
@@ -149,24 +162,46 @@ export class CardManifestation {
     }
 
     setActive(active: boolean): void {
+        this.active = active;
         this.root.visible = active;
+        if (this.frozenMaterials.length) this.card.material = active ? this.frozenMaterials : this.originalMaterials;
+    }
+
+    /** The formed Ice plate is an opaque occluder even before its artwork appears. */
+    get cardDepthVisible(): boolean {
+        return this.active && this.frozenMaterials.some(material => material.visible);
     }
 
     update(time: number, morph: number, opacity: number, fill: number, corners: number, cardImage: number,
         electricActivity = 0): void {
         const uniforms = this.mesh.material.uniforms;
+        if (this.frozenMaterials.length) {
+            this.iceImage.value = cardImage;
+            const originals = this.originalMaterials as THREE.MeshBasicMaterial[];
+            this.frozenMaterials.forEach((material, i) => {
+                material.visible = time >= 1.45;
+                if (material.map !== originals[i].map) {
+                    material.map = originals[i].map;
+                    material.needsUpdate = true;
+                }
+            });
+        }
         uniforms.uTime.value = time;
         uniforms.uMorph.value = morph;
         uniforms.uOpacity.value = opacity;
-        uniforms.uFill.value = fill;
+        // Ice keeps the existing luminous outline over its solid frozen surface.
+        uniforms.uFill.value = this.frozenMaterials.length ? 0 : fill;
         uniforms.uCorners.value = corners;
         if (uniforms.uElectricActivity) uniforms.uElectricActivity.value = electricActivity;
         this.mesh.visible = opacity > 0.001 || electricActivity > 0.001;
-        this.glow.material.opacity = cardImage * 0.64;
+        const frozenGlow = this.frozenMaterials.length ? THREE.MathUtils.smoothstep(time, 1.45, 1.7) : 0;
+        this.glow.material.opacity = Math.max(cardImage, frozenGlow) * 0.64;
         this.glow.visible = this.glow.material.opacity > 0.001;
     }
 
     dispose(): void {
+        if (this.frozenMaterials.length && this.card.material === this.frozenMaterials) this.card.material = this.originalMaterials;
+        this.frozenMaterials.forEach(material => material.dispose());
         this.root.removeFromParent();
         this.mesh.removeFromParent();
         this.mesh.geometry.dispose();

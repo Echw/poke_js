@@ -11,7 +11,12 @@ import { ElectricEffect } from '../effects/electric';
 import { GrassEffect } from '../effects/grass';
 import { FireEffect } from '../effects/fire';
 import { WaterEffect } from '../effects/water';
+import { IceEffect } from '../effects/ice';
+import { GpuSmokeMist } from '../effects/gpuSmokeMist';
+import { GpuTimer } from '../effects/gpuTimer';
+import { SmokeBoundarySampler, SMOKE_OPENING } from '../effects/smokeBoundary';
 import { CARD_REVEAL_TIMING } from '../effects/cardTransformation';
+import { SMOKE_DURATION } from '../effects/smokeTiming';
 import type { PokemonRevealEffect, RevealType } from '../effects/types';
 import { createCardGeometry } from './card';
 
@@ -49,10 +54,14 @@ export const sceneController = {
         frameCamera();
 
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+        const frameTimer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext);
+        let frameTimingEnabled = false;
+        let renderedFrames = 0;
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.localClippingEnabled = true;
 
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('/draco/');
@@ -92,6 +101,8 @@ export const sceneController = {
         scene.add(revealFill);
 
         scene.add(glb.scene);
+        const occluders: THREE.Object3D[] = [];
+        glb.scene.traverse(object => occluders.push(object));
 
         const frontMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
         const backMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
@@ -115,6 +126,7 @@ export const sceneController = {
         if (!lid) throw new Error('Poké Ball lid not found in GLB');
         const lidClosedX = lid.rotation.x;
         const degrees = THREE.MathUtils.degToRad;
+        const smokeBoundary = new SmokeBoundarySampler(glb.scene, lid);
 
         const psychic = new PsychicEffect(card, window.innerWidth < 700);
         psychic.root.traverse((object) => { object.renderOrder = 2; });
@@ -123,19 +135,105 @@ export const sceneController = {
         let grass: GrassEffect | undefined;
         let fire: FireEffect | undefined;
         let water: WaterEffect | undefined;
+        let ice: IceEffect | undefined;
+        let icePrepared = false;
+        let mist: GpuSmokeMist | undefined;
+        let depthTarget: THREE.WebGLRenderTarget | undefined;
+        const depthMaterial = new THREE.MeshDepthMaterial();
+        depthMaterial.colorWrite = false;
+        depthMaterial.toneMapped = false;
+        const depthMaterials = new Map<THREE.Side, THREE.MeshDepthMaterial>([[THREE.FrontSide, depthMaterial]]);
+        const depthFor = (material: THREE.Material) => {
+            let result = depthMaterials.get(material.side);
+            if (!result) { result = depthMaterial.clone(); result.side = material.side; depthMaterials.set(material.side, result); }
+            return result;
+        };
+        let mistSource: THREE.Object3D | undefined;
+        const hiddenForDepth: THREE.Object3D[] = [];
         let activeEffect: PokemonRevealEffect = psychic;
 
         let disposed = false;
         let cardImageRequest = 0;
         let running = false;
+        let playbackWanted = false;
+        let playbackEpoch = 0;
+        let buffering = false;
+        let lastShownTime = 0;
+        const bufferSize = new THREE.Vector2();
+        renderer.info.autoReset = false;
         const render = () => {
+            if (disposed || document.hidden) return;
+            if (mist instanceof GpuSmokeMist && activeEffect === ice && !mist.hasFrame(timeline.time())) {
+                if (!buffering) {
+                    buffering = true;
+                    const desired = timeline.time(), epoch = playbackEpoch;
+                    timeline.pause(lastShownTime, true); running = false; renderer.setAnimationLoop(null);
+                    void mist.prepare(desired).then(() => {
+                        if (disposed || epoch !== playbackEpoch) return;
+                        buffering = false;
+                        timeline.time(desired, true);
+                        render();
+                        if (playbackWanted && !document.hidden) { timeline.play(); startRender(); }
+                    }).catch(error => { buffering = false; console.error('Could not prepare smoke frame', error); });
+                }
+                return;
+            }
+            lastShownTime = timeline.time();
+            renderedFrames++;
+            if (frameTimingEnabled) frameTimer.begin();
+            try {
+            renderer.info.reset();
             activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
+            card.visible = true;
             revealFill.intensity = activeEffect.fillLightIntensity;
-            if (activeEffect === water) {
+            if (activeEffect === water || activeEffect === ice) {
                 glb.scene.updateWorldMatrix(true, false);
                 revealFill.position.copy(activeEffect.fillLightPosition).applyMatrix4(glb.scene.matrixWorld);
             }
+            if (mist && depthTarget) {
+                const isIce = activeEffect === ice;
+                mist.mesh.visible = false;
+                if (isIce && timeline.time() > 0.008 && timeline.time() < SMOKE_DURATION) {
+                    hiddenForDepth.length = 0;
+                    const cardOpaque = ice!.cardDepthVisible || (frontMaterial.opacity >= 0.999 && backMaterial.opacity >= 0.999);
+                    for (const object of [cardOpaque ? undefined : card, psychic.root, electric?.root, grass?.root, fire?.root, water?.root]) {
+                        if (object?.visible) { hiddenForDepth.push(object); object.visible = false; }
+                    }
+                    const background = scene.background;
+                    const meshes = [...occluders.filter((object): object is THREE.Mesh => object instanceof THREE.Mesh), ...(cardOpaque ? [card] : [])];
+                    const saved = meshes.map(mesh => mesh.material);
+                    try {
+                        scene.background = null;
+                        meshes.forEach(mesh => { mesh.material = Array.isArray(mesh.material) ? mesh.material.map(depthFor) : depthFor(mesh.material); });
+                        renderer.setRenderTarget(depthTarget);
+                        ice!.withFogDepth(() => renderer.render(scene, camera));
+                    } finally {
+                        meshes.forEach((mesh, i) => { mesh.material = saved[i]!; });
+                        renderer.setRenderTarget(null);
+                        scene.background = background;
+                        hiddenForDepth.forEach(object => { object.visible = true; });
+                    }
+                }
+                if (isIce) {
+                    if (mist instanceof GpuSmokeMist) {
+                        glb.scene.updateWorldMatrix(true, true);
+                        mist.setOcclusionRevision(occluders.map(object => {
+                            const geometry = object instanceof THREE.Mesh ? object.geometry as THREE.BufferGeometry : undefined;
+                            const position = geometry?.getAttribute('position');
+                            return [object.visible, ...object.matrixWorld.elements, geometry?.id,
+                                position instanceof THREE.InterleavedBufferAttribute ? position.data.version : position?.version, geometry?.index?.version,
+                                geometry?.drawRange.start, geometry?.drawRange.count].join(',');
+                        }).join(';') + `:${ice!.fogDepthRevision}:${card.visible}:${frontMaterial.opacity}:${card.matrixWorld.elements.join(',')}`);
+                    }
+                    renderer.getDrawingBufferSize(bufferSize);
+                    mist.update(timeline.time(), Math.abs(lid.rotation.x-lidClosedX)/degrees(45), mistSource!, camera, depthTarget.depthTexture!);
+                }
+            }
             renderer.render(scene, camera);
+            if (activeEffect === ice) mist?.render(renderer, camera);
+            } finally {
+                if (frameTimingEnabled) frameTimer.end();
+            }
         };
         const startRender = () => {
             if (running) return;
@@ -148,6 +246,7 @@ export const sceneController = {
             render();
         };
         const finishRender = () => {
+            playbackWanted = false;
             activeEffect.finish();
             stopRender();
             render();
@@ -155,13 +254,13 @@ export const sceneController = {
 
         const createTimeline = (reveal: RevealType) => {
             const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' ? 0.8 : 1.90;
-            next.to(lid.rotation, { x: lidClosedX - degrees(45), duration: openingDuration, ease: 'power1.out' }, 0);
-            next.to(glb.scene.rotation, { x: degrees(4), duration: openingDuration, ease: 'power1.out' }, 0);
+            const openingDuration = reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' ? SMOKE_OPENING.duration : 1.90;
+            next.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
+            next.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
-            next.to(card.position, { y: reveal === 'water' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to(card.position, { y: reveal === 'water' || reveal === 'ice' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
-            const cardScale = reveal === 'water' ? 0.94 : 1.18;
+            const cardScale = reveal === 'water' || reveal === 'ice' ? 0.94 : 1.18;
             next.to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: 'power2.inOut' }, CARD_REVEAL_TIMING.image);
             return next;
@@ -173,16 +272,36 @@ export const sceneController = {
             frameCamera();
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.getDrawingBufferSize(bufferSize);
+            depthTarget?.setSize(bufferSize.x, bufferSize.y);
             if (!running) render();
         };
         window.addEventListener('resize', resize);
+        const visibility = () => {
+            if (document.hidden) { timeline.pause(); running = false; renderer.setAnimationLoop(null); }
+            else {
+                const epoch = playbackEpoch;
+                void (mist && activeEffect === ice ? mist.prepare(timeline.time()) : Promise.resolve()).then(() => {
+                    if (!disposed && epoch === playbackEpoch && !document.hidden) {
+                        render();
+                        if (playbackWanted) { timeline.play(); startRender(); }
+                    }
+                });
+            }
+        };
+        document.addEventListener('visibilitychange', visibility);
         render();
 
         return {
             // Used by the development preview only; no debug handles in production.
             debug: import.meta.env.DEV ? {
-                seek(time: number) {
+                async seek(time: number) {
                     if (disposed || !Number.isFinite(time)) return;
+                    const epoch = ++playbackEpoch;
+                    playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
+                    timeline.pause();
+                    if (mist instanceof GpuSmokeMist && activeEffect === ice) await mist.prepare(time);
+                    if (disposed || epoch !== playbackEpoch) return;
                     timeline.pause(0, true);
                     activeEffect.reset();
                     timeline.time(THREE.MathUtils.clamp(time, 0, timeline.duration()), true);
@@ -192,20 +311,56 @@ export const sceneController = {
                 /** Resume the development preview, optionally in slow motion. */
                 resume(rate = 1) {
                     if (disposed || !Number.isFinite(rate) || rate <= 0 || timeline.time() >= timeline.duration()) return;
+                    playbackWanted = true;
+                    if (document.hidden || buffering) return;
                     timeline.timeScale(rate).play();
                     startRender();
                 },
                 snapshot() {
                     return {
-                        time: timeline.time(), duration: timeline.duration(), running, disposed,
+                        time: timeline.time(), duration: timeline.duration(), running, disposed, buffering,
                         effect: activeEffect.root.name,
                         memory: { ...renderer.info.memory }, calls: renderer.info.render.calls,
                         programs: renderer.info.programs?.length ?? 0,
                         cardScale: card.scale.x,
+                        frameGpu: frameTimer.stats(),
+                        renderedFrames,
+                        mist: mist ? { visible:mist.mesh.visible,kind:'gpu',...mist.getDebugInfo() } : undefined,
                     };
                 },
                 model: glb.scene,
                 card,
+                mistSettings: () => mist?.settings,
+                setMistDebugView(view: 'lighting' | 'density' | 'velocity') {
+                    if (mist instanceof GpuSmokeMist) { mist.debugView = view; render(); }
+                },
+                setMistOptimization(mode: 'reference' | 'optimized') {
+                    if (mist instanceof GpuSmokeMist) { mist.mode = mode; render(); }
+                },
+                mistPixels: () => mist instanceof GpuSmokeMist ? mist.readPixels(renderer) : undefined,
+                setSmokeFrameTiming(enabled: boolean) { frameTimingEnabled = enabled;frameTimer.clear(); },
+                smokeDiagnostics: () => mist instanceof GpuSmokeMist ? mist.simulation?.diagnostics() : undefined,
+                exportMistFrame: (frame: number) => mist instanceof GpuSmokeMist ? mist.exportFrame(frame) : undefined,
+                replayFrameData: () => mist instanceof GpuSmokeMist ? mist.replay?.frameData() : undefined,
+                readSmokeField: () => mist instanceof GpuSmokeMist ? mist.readField() : undefined,
+                clearSmokeReadback: () => { if (mist instanceof GpuSmokeMist) mist.clearReadback(); },
+                async setMistSource(source: 'live' | 'replay') {
+                    if (!(mist instanceof GpuSmokeMist)) return;
+                    const epoch = ++playbackEpoch, resume = playbackWanted;
+                    playbackWanted = false; buffering = false; timeline.pause(); running = false; renderer.setAnimationLoop(null);
+                    await mist.setSource(source);
+                    await mist.prepare(timeline.time());
+                    if (disposed || epoch !== playbackEpoch) return;
+                    render();
+                    if (resume && !document.hidden) { playbackWanted = true; timeline.play(); startRender(); }
+                },
+                resetSmokeTiming() { frameTimer.clear();if(mist instanceof GpuSmokeMist){mist.timer.clear();mist.simulation?.timer.clear();mist.replay?.clearTiming();mist.occupancy.timer.clear();} },
+                /** Side view is for occlusion QA; normal playback retains the original camera. */
+                sideView(enabled: boolean) {
+                    if (enabled) { camera.position.set(3.0,0.6,2.0);camera.lookAt(0,0.1,0); }
+                    else frameCamera();
+                    render();
+                },
             } : undefined,
             async setCardImage(image: string) {
                 const request = ++cardImageRequest;
@@ -218,8 +373,10 @@ export const sceneController = {
                 if (!running) render();
                 return true;
             },
-            play(reveal: RevealType = 'psychic') {
+            async play(reveal: RevealType = 'psychic') {
                 if (disposed) return;
+                const epoch = ++playbackEpoch;
+                playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
                 timeline.kill();
                 if (reveal === 'electric' && !electric) {
                     electric = new ElectricEffect(card, window.innerWidth < 700);
@@ -240,9 +397,28 @@ export const sceneController = {
                     water = new WaterEffect(card, skyEnvironment, window.innerWidth < 700);
                     glb.scene.add(water.root);
                 }
+                if (reveal === 'ice' && !ice) {
+                    ice = new IceEffect(card, skyEnvironment, renderer, window.innerWidth < 700);
+                    glb.scene.add(ice.root);
+                    mist = new GpuSmokeMist(renderer,camera,smokeBoundary,window.innerWidth<700,
+                        import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay');
+                    // Preserve the root-space opening coordinates while following the actual bottom node.
+                    mistSource = new THREE.Object3D();
+                    mistSource.name = 'IceMistSource';
+                    glb.scene.add(mistSource);
+                    const bowl = glb.scene.getObjectByName('bottom_low001')
+                        ?? glb.scene.getObjectByName('bottom_low001_pokeball_0');
+                    if (!bowl) throw new Error('Poké Ball bowl not found in GLB');
+                    bowl.attach(mistSource);
+                    renderer.getDrawingBufferSize(bufferSize);
+                    depthTarget = new THREE.WebGLRenderTarget(bufferSize.x, bufferSize.y, {
+                        depthTexture: new THREE.DepthTexture(bufferSize.x, bufferSize.y),
+                        minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+                    });
+                }
                 activeEffect.setActive(false);
                 activeEffect = reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
-                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : psychic;
+                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : psychic;
                 revealFill.color.copy(activeEffect.fillLightColor);
                 revealFill.position.copy(activeEffect.fillLightPosition);
                 activeEffect.setActive(true);
@@ -254,31 +430,69 @@ export const sceneController = {
                 card.scale.setScalar(0.26);
                 frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
                 timeline = createTimeline(reveal);
+                if (mist && reveal === 'ice') {
+                    await mist.prepare(0);
+                    if (disposed || epoch !== playbackEpoch) return;
+                    mist.reset();
+                    if (!icePrepared) {
+                        await renderer.compileAsync(ice!.root, camera, scene);
+                        if (disposed || epoch !== playbackEpoch) return;
+                        await renderer.compileAsync(card, camera, scene);
+                        if (disposed || epoch !== playbackEpoch) return;
+                        await ice!.compileFogDepth(renderer, camera, scene);
+                        if (disposed || epoch !== playbackEpoch) return;
+                        for (const object of [...occluders, card]) {
+                            if (!(object instanceof THREE.Mesh)) continue;
+                            const material = object.material;
+                            let compiled: Promise<unknown>;
+                            try {
+                                object.material = Array.isArray(material) ? material.map(depthFor) : depthFor(material);
+                                compiled = renderer.compileAsync(object, camera, scene);
+                            } finally { object.material = material; }
+                            await compiled;
+                            if (disposed || epoch !== playbackEpoch) return;
+                        }
+                        await mist.warmup();
+                        if (disposed || epoch !== playbackEpoch) return;
+                        icePrepared = true;
+                    }
+                }
+                if (disposed || epoch !== playbackEpoch) return;
+                lastShownTime = 0;
                 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                     timeline.progress(1);
                     finishRender();
                 } else {
+                    playbackWanted = true;
                     timeline.play(0);
+                    if (document.hidden) visibility();
                 }
             },
             stop() {
                 if (disposed) return;
+                playbackWanted = false; playbackEpoch++; buffering = false;
                 timeline.pause();
                 stopRender();
             },
             dispose() {
                 if (disposed) return;
                 disposed = true;
+                playbackWanted = false; playbackEpoch++;
                 running = false;
                 cardImageRequest++;
                 timeline.kill();
                 renderer.setAnimationLoop(null);
                 window.removeEventListener('resize', resize);
+                document.removeEventListener('visibilitychange', visibility);
                 psychic.dispose();
                 electric?.dispose();
                 grass?.dispose();
                 fire?.dispose();
                 water?.dispose();
+                ice?.dispose();
+                mist?.dispose();
+                depthTarget?.dispose();
+                depthMaterials.forEach(material => material.dispose());
                 card.geometry.dispose();
                 if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
                 backTexture.dispose();
@@ -312,6 +526,7 @@ export const sceneController = {
                     });
                 });
                 renderer.dispose();
+                frameTimer.dispose();
                 renderer.forceContextLoss();
             },
         };

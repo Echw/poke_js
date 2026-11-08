@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:ice": "node scripts/verify-ice-integration.mjs",
+    "test:ice:visual": "node scripts/verify-smoke-clips.mjs",
+    "smoke:export": "node scripts/export-smoke-replay.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",
