@@ -53,20 +53,22 @@ export class GpuSmokeMist {
     private occlusionRevision = '';
     private cacheHits = 0;
     private volumeDraws = 0;
-    readonly variant: SmokeVariant;
+    readonly variant: SmokeVariant | 'ghost';
+    private readonly sourceVariant: SmokeVariant;
     constructor(
         renderer: THREE.WebGLRenderer,
         camera: THREE.Camera,
         boundary: SmokeBoundarySampler,
         mobile = false,
         source: 'live' | 'replay' = 'replay',
-        variant: SmokeVariant = 'ice',
+        variant: SmokeVariant | 'ghost' = 'ice',
     ) {
         this.variant = variant;
-        const profile = smokeProfile(variant);
+        this.sourceVariant = variant === 'ghost' ? 'fighting' : variant;
+        const profile = smokeProfile(this.sourceVariant);
         Object.assign(this.settings, profile.preset);
         this.renderer = renderer; this.camera = camera; this.boundary = boundary; this.mobile = mobile;
-        this.scale = mobile ? 0.6 : 0.75;
+        this.scale = variant === 'ghost' ? (mobile ? 0.6 : 0.65) : mobile ? 0.6 : 0.75;
         this.settings.steps = mobile ? 96 : 128;
         this.placeholder = new THREE.DataTexture(new Uint16Array(1), 1, 1, THREE.RedFormat, THREE.HalfFloatType);
         this.placeholder.needsUpdate = true;
@@ -83,9 +85,13 @@ export class GpuSmokeMist {
             ),
             new THREE.ShaderMaterial({
                 glslVersion: THREE.GLSL3,
-                defines: variant === 'ground' ? { GROUND_SMOKE: 1 } : variant === 'poison' ? { POISON_SMOKE: 1 } : variant === 'fighting' ? { FIGHTING_SMOKE: 1 } : {},
+                defines: variant === 'ghost' ? { GHOST_SMOKE: 1 } : variant === 'ground' ? { GROUND_SMOKE: 1 } : variant === 'poison' ? { POISON_SMOKE: 1 } : variant === 'fighting' ? { FIGHTING_SMOKE: 1 } : {},
                 uniforms: {
                     uPoisonTime: { value: 0 },
+                    uGhostTime: { value: 0 },
+                    uGhostBase: { value: new THREE.Color(0x2b0b45) },
+                    uGhostMid: { value: new THREE.Color(0x6e24a3) },
+                    uGhostEdge: { value: new THREE.Color(0xcf9cff) },
                     uN: { value: this.field.densityResolution },
                     uTiles: { value: this.field.densityTiles },
                     uH: { value: this.field.domainSize / this.field.densityResolution },
@@ -156,10 +162,10 @@ export class GpuSmokeMist {
         this.simulation?.dispose(); this.simulation = undefined;
         this.fallbackReason = undefined;
         if (source === 'replay') {
-            for (const key of PHYSICS_KEYS) this.settings[key] = smokeProfile(this.variant).preset[key];
+            for (const key of PHYSICS_KEYS) this.settings[key] = smokeProfile(this.sourceVariant).preset[key];
             let replay: SmokeReplay | undefined;
             try {
-                replay = new SmokeReplay(this.renderer, this.boundary, this.mobile, this.variant);
+                replay = new SmokeReplay(this.renderer, this.boundary, this.mobile, this.sourceVariant);
                 this.replay = replay;
                 await replay.ready;
                 if (this.disposed || epoch !== this.sourceEpoch) { replay.dispose(); return; }
@@ -172,7 +178,7 @@ export class GpuSmokeMist {
             }
         }
         if (!this.replay) {
-            this.simulation = new GpuSmokeSimulation(this.renderer, this.camera, this.boundary, this.settings, this.mobile, this.variant);
+            this.simulation = new GpuSmokeSimulation(this.renderer, this.camera, this.boundary, this.settings, this.mobile, this.sourceVariant);
             this.simulation.advanceTo(this.simulation.dt); this.simulation.reset();
             this.field = this.simulation;
         }
@@ -181,7 +187,7 @@ export class GpuSmokeMist {
     }
     async prepare(time: number): Promise<void> {
         await this.ready;
-        if (this.replay && PHYSICS_KEYS.some(key => this.settings[key] !== smokeProfile(this.variant).preset[key])) await this.setSource('live');
+        if (this.replay && PHYSICS_KEYS.some(key => this.settings[key] !== smokeProfile(this.sourceVariant).preset[key])) await this.setSource('live');
         const epoch = this.sourceEpoch;
         try { await this.replay?.prepare(time); }
         catch (error) {
@@ -226,7 +232,7 @@ export class GpuSmokeMist {
     }
     advanceTo(time: number): void {
         if (this.replay) this.replay.advanceTo(time);
-        else this.simulation?.advanceTo(smokeProfile(this.variant).sourceFrame(smokeFrame(time)) * SMOKE_DT);
+        else this.simulation?.advanceTo(smokeProfile(this.sourceVariant).sourceFrame(smokeFrame(time)) * SMOKE_DT);
     }
     reset(): void { (this.replay ?? this.simulation)?.reset(); this.cacheKey = ''; }
     setOcclusionRevision(value: string): void { this.occlusionRevision = value; }
@@ -267,7 +273,7 @@ export class GpuSmokeMist {
             * (1 - THREE.MathUtils.smoothstep(time, 1.45, 3.15));
         u.uFade.value = this.variant === 'fighting' ? (1 - THREE.MathUtils.smoothstep(time, 1.6, 3.5) * 0.8)
             * (1 - THREE.MathUtils.smoothstep(time, 3.15, 3.5))
-            : 1 - THREE.MathUtils.smoothstep(smokeProfile(this.variant).sourceTime(time), 5.7, 6);
+            : 1 - THREE.MathUtils.smoothstep(smokeProfile(this.sourceVariant).sourceTime(time), 5.7, 6);
         if (this.variant === 'ground') {
             u.uIceLight.value *= 0.6;
             u.uFade.value = 0.75 * (1 - THREE.MathUtils.smoothstep(time, 2.65, 3.3));
@@ -278,7 +284,13 @@ export class GpuSmokeMist {
                 * (1 - THREE.MathUtils.smoothstep(time, 1.45, 3.2));
             u.uFade.value = 1 - THREE.MathUtils.smoothstep(time, 2.15, 3.5);
         }
-        this.mesh.visible = time > 0.008 && time < SMOKE_DURATION && opening > 0.002;
+        if (this.variant === 'ghost') {
+            u.uGhostTime.value = time;
+            u.uIceLight.value = THREE.MathUtils.smoothstep(time, 0.05, 0.65)
+                * (1 - THREE.MathUtils.smoothstep(time, 1.6, 3.5));
+            u.uFade.value = 1 - THREE.MathUtils.smoothstep(time, 2.1, 3.5) * 0.82;
+        }
+        this.mesh.visible = time > 0.008 && (time < SMOKE_DURATION || this.variant === 'ghost' && time === SMOKE_DURATION) && opening > 0.002;
     }
     render(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void {
         if (this.disposed) return;
@@ -298,7 +310,7 @@ export class GpuSmokeMist {
         renderer.getClearColor(this.clearColor);
         // Alternate an occasional occupancy-only query; all other fog queries include its build.
         const key = [this.sourceEpoch, this.field.version, width, height, this.poseKey, this.occlusionRevision, this.mode, this.debugView,
-            this.variant === 'poison' ? this.mesh.material.uniforms.uPoisonTime.value : 0,
+            this.variant === 'poison' ? this.mesh.material.uniforms.uPoisonTime.value : this.variant === 'ghost' ? this.desiredTime : 0,
             this.settings.steps, this.settings.density, this.mesh.material.uniforms.uFade.value, this.mesh.material.uniforms.uIceLight.value,
             ...camera.matrixWorld.elements, ...camera.projectionMatrix.elements].join(':');
         const reuse = key === this.cacheKey;
@@ -306,7 +318,7 @@ export class GpuSmokeMist {
         if (!measureMap) this.timer.begin();
         try {
             if (!reuse) {
-                if (this.mode === 'optimized') this.occupancy.update(renderer, camera, this.field, measureMap);
+                if (this.variant !== 'ghost' && this.mode === 'optimized') this.occupancy.update(renderer, camera, this.field, measureMap);
                 renderer.setRenderTarget(this.target);
                 renderer.setClearColor(0, 0);
                 renderer.autoClear = true;

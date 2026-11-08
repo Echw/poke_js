@@ -20,10 +20,10 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 async function start() {
     const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
     const requestedReveal = previewParams?.get('reveal');
-    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock'] as const).find(
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost'] as const).find(
               (type) => type === requestedReveal,
           );
-    const initialName = previewReveal === 'rock' ? 'Geodude' : previewReveal === 'bug' ? 'Caterpie' : previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
+    const initialName = previewReveal === 'ghost' ? 'Gastly' : previewReveal === 'rock' ? 'Geodude' : previewReveal === 'bug' ? 'Caterpie' : previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -34,7 +34,9 @@ async function start() {
 
     let cardRequestId = 0;
     const initialCard = (
-        previewReveal === 'rock'
+        previewReveal === 'ghost'
+            ? Promise.resolve({ name: 'Gastly', image: '/textures/gastly-preview.webp', types: ['Psychic'], dexId: [92] })
+            : previewReveal === 'rock'
             ? Promise.resolve({ name: 'Geodude', image: '/textures/geodude-preview.webp', types: ['Fighting'], dexId: [74] })
             : previewReveal === 'bug'
             ? Promise.resolve({ name: 'Caterpie', image: '/textures/caterpie-preview.webp', types: ['Grass'], dexId: [10] })

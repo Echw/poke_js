@@ -1,3 +1,4 @@
+import { ghostVolumeGLSL } from './ghostVolume';
 import { smokeGridGLSL } from './gpuSmokeShaders';
 
 export const gpuVolumeVertex = `out vec3 vWorld;void main(){vec4 w=modelMatrix*vec4(position,1);vWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
@@ -51,6 +52,7 @@ export const gpuVolumeFragment = /* glsl */ `
     uniform float uVelocityH;
     uniform int uOptimized,uLinear,uBrickN,uBrickTiles;
     in vec3 vWorld;out vec4 outColor;
+    ${ghostVolumeGLSL}
     ${smokeGridGLSL}
     ${smokeDensityGLSL}
     ${smokeOpticalDepthGLSL}
@@ -81,6 +83,9 @@ export const gpuVolumeFragment = /* glsl */ `
             if(float(i)>=uSteps||t>end||acc.a>0.985)break;
             // Keep every addition on the original sample lattice, including skipped samples.
             if(i<skipUntil){t+=dt;continue;}
+            // Ghost matter may occupy empty solver bricks; retain hardware sampling
+            // but do not cull those bricks using the Fighting density alone.
+            #ifndef GHOST_SMOKE
             if(uOptimized==1){
                 float brickSize=uH*8.0;ivec3 brick=ivec3(floor((ro+rd*t-uDomainMin)/brickSize));
                 float maximum=fetchAt(uOccupancy,brick,uBrickN,uBrickTiles).r;
@@ -94,9 +99,20 @@ export const gpuVolumeFragment = /* glsl */ `
                     skipUntil=i+count;t+=dt;continue;
                 }
             }
+            #endif
             vec3 p=ro+rd*t;vec2 sampleField=field(p);float d=sampleField.r;
             #ifdef POISON_SMOKE
             if(d>0.004)d*=poisonWisps(p);
+            #endif
+            #ifdef GHOST_SMOKE
+            vec3 ghostLocal=(uWorldToBowl*vec4(p,1)).xyz;
+            vec4 spirit=ghostBody(ghostLocal,0.0)+ghostBody(ghostLocal,1.0);
+            float corridor=1.0-smoothstep(1.75,2.15,uGhostTime)
+                *(1.0-smoothstep(0.30,0.50,abs(ghostLocal.x)));
+            float residue=1.0-smoothstep(2.55,3.5,uGhostTime)*smoothstep(0.08,0.32,ghostLocal.y);
+            float haze=d*ghostMatter(ghostLocal)*0.85*residue;
+            float matter=haze+spirit.x;
+            d=(matter+spirit.y*7.5)*corridor;
             #endif
             if(d>0.004){
                 vec3 color;
@@ -108,7 +124,21 @@ export const gpuVolumeFragment = /* glsl */ `
                     float bowlGlow=exp(-dot(source,source)*5.0)*uIceLight;
                     float lighting=illumination(p,light);
                     // Pale, milky frost keeps cooler shadows without a saturated blue veil.
-                    #ifdef POISON_SMOKE
+                    #ifdef GHOST_SMOKE
+                    vec3 ghostSource=bowl-vec3(0.0,-0.07,0.28);
+                    float sourceLight=exp(-dot(ghostSource,ghostSource)*12.0)*uIceLight;
+                    float flow=spirit.w/max(matter,0.001);
+                    float rim=spirit.z/max(matter,0.001);
+                    // Dark matter is independent of sparse travelling light packets.
+                    color=uGhostBase*(0.65+lighting*0.40)+uGhostMid*(0.20+lighting*0.20);
+                    color+=mix(uGhostMid,uGhostEdge,0.52)*flow*1.25;
+                    color+=uGhostEdge*(rim*0.65+sourceLight*0.42);
+                    // Brighten the smoke independently of spirit interiors and light ribbons.
+                    float hazeShare=haze/max(matter,0.001);
+                    color+=hazeShare*(uGhostMid*(0.38+lighting*0.45)+uGhostEdge*sourceLight*0.18);
+                    color+=vec3(1.6,1.38,1.8)*exp(-dot(ghostSource,ghostSource)*145.0)*uIceLight;
+                    color=mix(color,vec3(0.002,0.0003,0.006),clamp(spirit.y,0.0,1.0));
+                    #elif defined(POISON_SMOKE)
                     color=vec3(0.018,0.001,0.028)+vec3(0.20,0.005,0.32)*lighting
                         +vec3(0.42,0.015,0.56)*bowlGlow;
                     #elif defined(GROUND_SMOKE)

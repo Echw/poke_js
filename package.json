@@ -14,6 +14,7 @@
     "test:poison": "node scripts/verify-poison.mjs",
     "test:flying": "node scripts/verify-flying.mjs",
     "test:ground": "node scripts/verify-ground.mjs",
+    "test:ghost": "node scripts/verify-ghost.mjs",
     "test:rock": "node scripts/verify-rock.mjs",
     "test:fighting": "node scripts/verify-fighting.mjs",
     "test:ice:visual": "node scripts/verify-smoke-clips.mjs",

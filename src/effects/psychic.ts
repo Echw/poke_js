@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ribbonFragment } from './ribbonMaterial';
 import { CardTransformation } from './cardTransformation';
 import type { PokemonRevealEffect } from './types';
 
@@ -45,33 +46,6 @@ const ribbonVertex = /* glsl */ `
         vSide = aSide;
         vNoise = sin(t * 37.0 + uTime * 2.3 + uPhase) * sin(t * 19.0 - uTime + uPhase);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-    }
-`;
-
-const ribbonFragment = /* glsl */ `
-    uniform vec3 uColor;
-    uniform float uOpacity;
-    uniform float uReveal;
-    uniform float uTime;
-    uniform float uPhase;
-    uniform float uKind;
-    varying float vT;
-    varying float vSide;
-    varying float vNoise;
-
-    void main() {
-        float edge = pow(max(0.0, 1.0 - abs(vSide)), 1.65);
-        float hot = pow(max(0.0, 1.0 - abs(vSide) * 3.2), 2.0);
-        float flicker = 0.67 + 0.33 * sin(vT * 29.0 - uTime * 3.4 + uPhase) * sin(vT * 13.0 + uTime * 1.3);
-        float shape = uKind < 0.5
-            ? smoothstep(0.0, 0.10, vT) * (1.0 - smoothstep(0.86, 1.0, vT))
-            : (0.08 + 0.92 * smoothstep(-0.30, 0.50, sin(vT * 31.0 + uPhase + uTime)));
-        float reveal = uKind < 0.5
-            ? 1.0 - smoothstep(uReveal - 0.10, uReveal + 0.04, vT)
-            : uReveal;
-        float alpha = edge * shape * flicker * reveal * uOpacity * (0.82 + 0.18 * vNoise);
-        vec3 color = mix(uColor, vec3(1.0, 0.83, 1.0), hot * 0.78);
-        gl_FragColor = vec4(color * 1.18, alpha);
     }
 `;
 

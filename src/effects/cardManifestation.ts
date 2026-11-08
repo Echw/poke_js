@@ -114,6 +114,7 @@ export class CardManifestation {
                 createFrozenCardMaterial(material as THREE.MeshBasicMaterial, environment, this.iceImage)));
         }
         const electric = palette === 'electric';
+        const spectral = palette === 'poison' || palette === 'ghost';
         card.add(this.root);
         const geometry = new THREE.PlaneGeometry(1.20, 1.40);
         const material = new THREE.ShaderMaterial({
@@ -121,15 +122,15 @@ export class CardManifestation {
                 uTime: { value: 0 }, uMorph: { value: 0 }, uOpacity: { value: 0 },
                 uFill: { value: 1 }, uCorners: { value: 0 },
                 uBase: { value: palette === 'psychic' ? new THREE.Vector3(0.76, 0.35, 1.0)
-                    : new THREE.Color(palette === 'flying' ? 0x8ab9ff : palette === 'ground' ? 0xe2a045 : palette === 'poison' ? 0xbd21f5 : palette === 'fighting' ? 0xff390b : palette === 'ice' ? 0x80d8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
+                    : new THREE.Color(palette === 'flying' ? 0x8ab9ff : palette === 'ground' ? 0xe2a045 : spectral ? 0xbd21f5 : palette === 'fighting' ? 0xff390b : palette === 'ice' ? 0x80d8ff : palette === 'water' ? 0x139eff : palette === 'electric' ? 0xffb800 : palette === 'fire' ? 0xff4a08 : 0x66c91c) },
                 uHot: { value: palette === 'psychic' ? new THREE.Vector3(1.0, 0.89, 1.0)
-                    : new THREE.Color(palette === 'flying' ? 0xf3f8ff : palette === 'ground' ? 0xffe6ad : palette === 'poison' ? 0xffddff : palette === 'fighting' ? 0xffd28a : palette === 'ice' ? 0xebfbff : palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
+                    : new THREE.Color(palette === 'flying' ? 0xf3f8ff : palette === 'ground' ? 0xffe6ad : spectral ? 0xffddff : palette === 'fighting' ? 0xffd28a : palette === 'ice' ? 0xebfbff : palette === 'water' ? 0xe2faff : palette === 'electric' ? 0xfffdeb : palette === 'fire' ? 0xfff0b0 : 0xeaffad) },
                 ...(electric ? {
                     uElectricActivity: { value: 0 },
                 } : {}),
             },
             defines: electric ? { ELECTRIC: 1 } : palette === 'grass' ? { GRASS: 1 }
-                : palette === 'poison' ? { POISON: 1 } : palette === 'fighting' ? { FIGHTING: 1 } : palette === 'fire' ? { FIRE: 1 } : palette === 'flying' || palette === 'water' || palette === 'ice' || palette === 'ground' ? { WATER: 1 } : {},
+                : spectral ? { POISON: 1 } : palette === 'fighting' ? { FIGHTING: 1 } : palette === 'fire' ? { FIRE: 1 } : palette === 'flying' || palette === 'water' || palette === 'ice' || palette === 'ground' ? { WATER: 1 } : {},
             vertexShader,
             fragmentShader,
             transparent: true,
