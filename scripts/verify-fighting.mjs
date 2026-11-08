@@ -86,7 +86,7 @@ async function record(page, name, side, rate) {
 
 try {
     assert.equal(revealTypeForCard(machop), 'fighting');
-    assert.equal(revealTypeForCard({ ...machop, name: 'Geodude', dexId: [74] }), 'ground');
+    assert.equal(revealTypeForCard({ ...machop, name: 'Geodude', dexId: [74] }), 'rock');
     assert.equal(revealTypeForCard({ ...machop, name: 'Glaceon', dexId: [471] }), 'ice');
     assert.equal(revealTypeForCard({ ...machop, name: 'Squirtle', dexId: [7], types: ['Water'] }), 'water');
     report.scenarios.push('TCG Fighting selection and Ice precedence');

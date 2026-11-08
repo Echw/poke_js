@@ -68,6 +68,10 @@ const fragmentShader = /* glsl */ `
         float folds=sin(p.y*15.0-uTime*2.0+sin(p.x*17.0+uTime));
         alpha=uOpacity*(fill*uFill*(0.14+0.12*folds*folds)+edge*1.05+halo*0.18+corners*0.6);
         #endif
+        #ifdef ROCK
+        float veins=pow(1.0-abs(sin(p.x*24.0+p.y*13.0+sin(p.y*19.0)*0.9)),12.0);
+        alpha=uOpacity*(fill*uFill*(0.50+veins*0.32)+edge*1.20+halo*0.20+corners*0.60);
+        #endif
         #ifdef ELECTRIC
         float crawlA = pow(max(0.0, sin((p.x * 1.25 - p.y * 0.85) * 21.0 - uTime * 17.0)), 12.0);
         float crawlB = pow(max(0.0, sin((p.x * 0.65 + p.y * 1.40) * 17.0 + uTime * 13.0)), 15.0);
@@ -82,7 +86,7 @@ const fragmentShader = /* glsl */ `
         color = mix(uBase, uHot, clamp(pow(edge, 5.0) * 0.40 + corners * 0.22, 0.0, 1.0));
         #endif
         gl_FragColor = vec4(color, alpha);
-        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON)
+        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK)
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #endif
@@ -136,6 +140,11 @@ export class CardManifestation {
             forceSinglePass: palette !== 'psychic',
         });
         this.mesh = new THREE.Mesh(geometry, material);
+        if (palette === 'rock') {
+            material.uniforms.uBase.value = new THREE.Color(0xe6b975);
+            material.uniforms.uHot.value = new THREE.Color(0xfff2d1);
+            material.defines.ROCK = 1;
+        }
         this.mesh.position.z = 0.025;
         this.mesh.renderOrder = 4;
         this.root.add(this.mesh);
@@ -174,6 +183,11 @@ export class CardManifestation {
             context.shadowColor = '#c5e831';
             context.shadowBlur = 18;
         }
+        if (palette === 'rock') {
+            context.strokeStyle = 'rgba(239, 199, 139, 0.46)';
+            context.shadowColor = '#ffdda0';
+            context.shadowBlur = 18;
+        }
         context.lineWidth = palette === 'grass' ? 7 : 9;
         context.stroke();
         context.shadowBlur = 9;
@@ -182,6 +196,7 @@ export class CardManifestation {
                 ? 'rgba(255, 184, 75, 0.90)' : 'rgba(255, 233, 255, 0.92)';
         context.lineWidth = palette === 'grass' || palette === 'fire' ? 2 : 3;
         if (palette === 'bug') context.strokeStyle = 'rgba(255, 255, 198, 0.72)';
+        if (palette === 'rock') context.strokeStyle = 'rgba(255, 242, 209, 0.70)';
         context.stroke();
         const glowTexture = new THREE.CanvasTexture(canvas);
         glowTexture.colorSpace = THREE.SRGBColorSpace;

@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 import { fightingImpulse } from './smokeProfile';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug' | 'rock';
 
 /** Shared handoff times, in seconds from the Ball opening. */
 export const CARD_REVEAL_TIMING = {
@@ -152,6 +152,7 @@ export class CardTransformation {
     private readonly fighting: boolean;
     private readonly poison: boolean;
     private readonly ground: boolean;
+    private readonly rock: boolean;
     private finished = false;
 
     constructor(card: THREE.Mesh, palette: RevealPalette, mobile = false, environment?: THREE.Texture) {
@@ -159,6 +160,7 @@ export class CardTransformation {
         this.fighting = palette === 'fighting';
         this.poison = palette === 'poison';
         this.ground = palette === 'ground';
+        this.rock = palette === 'rock';
         this.fadeSourceWithCard = palette !== 'psychic';
         this.manifestation = new CardManifestation(card, palette, environment);
         this.manifestation.setActive(false);
@@ -192,6 +194,15 @@ export class CardTransformation {
                 mobile ? 20 : 32, mobile ? 14 : 24), coreMaterial,
         );
         this.core.position.set(0, -0.07, palette === 'flying' || palette === 'ice' || palette === 'water' || palette === 'ground' || palette === 'poison' ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
+        if (palette === 'rock') {
+            coreMaterial.uniforms.uBase.value = new THREE.Color(0xe9bb70);
+            coreMaterial.uniforms.uHot.value = new THREE.Color(0xfff4d6);
+            coreMaterial.uniforms.uRim.value = new THREE.Color(0xb17b38);
+            coreMaterial.side = THREE.FrontSide;
+            this.core.geometry.dispose();
+            this.core.geometry = new THREE.SphereGeometry(0.022, mobile ? 20 : 32, mobile ? 14 : 24);
+            this.core.position.set(0, 0.015, 0.60);
+        }
         if (palette === 'bug') {
             coreMaterial.side = THREE.FrontSide;
             coreMaterial.uniforms.uBase.value = new THREE.Color(0xc0df28);
@@ -260,6 +271,13 @@ export class CardTransformation {
                 forceSinglePass: true,
             });
             const glow = new THREE.Mesh(geometry, material);
+            if (palette === 'rock') {
+                material.uniforms.uColor.value = new THREE.Color(0xffdda0);
+                material.uniforms.uCenterSharpness.value = 28;
+                material.uniforms.uHaloStrength.value = 0.20;
+                material.depthTest = true;
+                glow.scale.setScalar(0.76);
+            }
             if (palette === 'bug') {
                 material.uniforms.uColor.value = new THREE.Color(0xd6ef38);
                 material.uniforms.uCenterSharpness.value = 28;
@@ -318,7 +336,7 @@ export class CardTransformation {
         for (const glow of this.glows) {
             if (glow.material.uniforms.uTime) glow.material.uniforms.uTime.value = time;
             glow.material.uniforms.uOpacity.value = (core * 0.65 + energy * 0.36)
-                * sourceOpacity * (1 - morph * 0.5) * (this.ice ? 0.9 : this.ground ? 0.42 : this.poison ? 0.24 : 1) * (1 + burst * 1.7);
+                * sourceOpacity * (1 - morph * 0.5) * (this.ice ? 0.9 : this.rock ? 0.45 : this.ground ? 0.42 : this.poison ? 0.24 : 1) * (1 + burst * 1.7);
         }
         this.manifestation.update(time, morph,
             this.finished ? 0 : silhouette * fade * (1 - cardImage),

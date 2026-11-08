@@ -1,0 +1,13 @@
+# Rock Reveal
+
+Preview: `/?reveal=rock` in the Vite development server. Run `pnpm test:rock` while the server is on port 5176, or set `ROCK_QA_URL`. The shared species resolver selects Rock for the first supported actual game type, including Geodude and Onix; Ground-first species retain Ground.
+
+Four asymmetric, thick mineral hulls lift directly from a low rubble bed to their individual final positions. Staggered tension and lift (0.12–1.30 s) lead into a stationary hold, then vertical-only landing (2.00–3.05 s). The card corridor is clear from the start; there is no second sideways repositioning or positional drift. Slow individual rotation still shows each solid form. Two short bursts of small spinning stones shoot left and right during emergence, with a smaller release on landing (48 chips desktop, 30 mobile). All poses are functions of absolute time; replay and reverse seek do not integrate state.
+
+Fighting supplies the small stone geometry and `earthPosition`/`earthRotation` mechanics. Ground supplies triplanar rock color/surface maps, their readiness and disposal, and the principle of short localized dust releases. Rock desaturates those maps for grey-brown exposed planes. New large hulls use broad irregular convex fracture faces with geometric fault recesses. Sparse sand, luminous grains and confined cream-gold energy use preallocated geometry. No smoke simulation, second render loop or new postprocessing is needed.
+
+`CardTransformation` and `CardManifestation` retain the common 3.5 s timeline. Rock adds a warm palette and veined silhouette, the existing 0.94 card scale, rotation and interaction. Rock preserves the scene's existing background and environment. The Ball model and other effect implementations are unchanged. All boulders and the rubble bed sink below the floor clip and hide by 3.15 s; no stones remain after completion. Reset and reverse seek restore the original bed and boulders. One shared material owns its two maps; rubble shares the chip geometries, with each geometry disposed once.
+
+The browser check covers six front/side phases on desktop/mobile, solid closed hulls, deterministic motion, card-surface clearance, search routing, interruption/type switching, resource stability across replay, reduced motion and disposal. `--motion` records half-speed WebM clips. Screenshots still require visual assessment of lighting, silhouette, spacing and the card handoff. Ground's world-space floor clipping also hides submerged fragments during landing, preventing stones from showing through the lower shell.
+
+Preview card: Geodude, Fossil 47, from TCGdex (`https://assets.tcgdex.net/en/base/base3/47/high.webp`). Pokémon card artwork belongs to its respective owners, consistent with the existing preview assets.

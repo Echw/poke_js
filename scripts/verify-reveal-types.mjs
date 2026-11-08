@@ -14,7 +14,7 @@ const cases = [
     ['Hisuian Sneasel',215,'fighting'],['Alolan Sandshrew',27,'ice'],['Alolan Marowak',105,'fire'],
     ['Paldean Wooper',194,'poison'],['Galarian Farfetch’d',83,'fighting'],['Galarian Yamask',562,'ground'],
     ['Paldean Tauros',128,'fighting'],['Paldean Tauros Aqua Breed',128,'fighting'],['Hisuian Qwilfish',211,'poison'],
-    ['Gengar',94,'poison'],['Geodude',74,'ground'],['Garchomp',445,'ground'],
+    ['Gengar',94,'poison'],['Geodude',74,'rock'],['Garchomp',445,'ground'],
     ['Alolan Raichu',26,'electric'],['M Charizard X EX',6,'fire'],['Mega Pinsir',127,'bug'],
     ['Wash Rotom',479,'electric'],['Shaymin Sky Forme',492,'grass'],['Ice Rider Calyrex',898,'psychic'],
     ['Shadow Rider Calyrex',898,'psychic'],['Great Tusk ex',984,'ground'],['Bloodmoon Ursaluna ex',901,'ground'],

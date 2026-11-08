@@ -68,7 +68,7 @@ async function record(page, profile, side, rate) {
 }
 
 try {
-    for (const [name, id, expected] of [['Sandshrew',27,'ground'],['Machop',66,'fighting'],['Geodude',74,'ground'],['Alolan Sandshrew',27,'ice'],['Alolan Marowak',105,'fire'],['Galarian Yamask',562,'ground'],['Yamask',562,'fighting'],['Nidoking',34,'poison'],['Garchomp',445,'ground'],['Groudon',383,'ground']]) {
+    for (const [name, id, expected] of [['Sandshrew',27,'ground'],['Machop',66,'fighting'],['Geodude',74,'rock'],['Alolan Sandshrew',27,'ice'],['Alolan Marowak',105,'fire'],['Galarian Yamask',562,'ground'],['Yamask',562,'fighting'],['Nidoking',34,'poison'],['Garchomp',445,'ground'],['Groudon',383,'ground']]) {
         assert.equal(revealTypeForCard({ ...card, name, dexId: [id] }), expected, name);
     }
     for (const name of ["Brock's Sandshrew", 'Great Tusk ex', 'Galarian Yamask', 'Bloodmoon Ursaluna ex']) assert.equal(revealTypeForCard({ ...card, name, dexId: [] }), 'ground', name);
