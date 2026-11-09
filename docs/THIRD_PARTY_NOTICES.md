@@ -32,6 +32,10 @@ The development-only card preview is the actual Glaceon card image, dp5-5, downl
 
 The Fighting development preview uses the actual Machop card, base1-52, downloaded from https://assets.tcgdex.net/en/base/base1/52/high.webp, under the same artwork ownership notice. It is a local preview fixture; production search loads the selected card.
 
+The Steel development preview uses the actual Metal Metagross card, me04-061, downloaded from https://assets.tcgdex.net/en/me/me04/061/high.webp, under the same artwork ownership notice. Its studio reflection map, procedural roughness fallback, ribbons, metal shavings, flakes, atmosphere and glints are procedural. The storyboard is a visual reference, not a runtime texture; production search loads the selected card.
+
+Steel's `public/textures/steel-brushed-detail.webp` is a 1024-pixel high-pass derivative of the user-supplied `Downloads/reflective-brushed-metal-foil-texture-free.jpg`, used for roughness and bump detail. No separate license information was supplied with this texture; the software licenses above do not apply to the image. The original JPG is unchanged.
+
 The Flying development preview uses the actual Pidgeotto card, base1-22, downloaded from https://assets.tcgdex.net/en/base/base1/22/high.webp, under the same artwork ownership notice. Flying species/forms were verified against https://pokeapi.co/api/v2/type/flying on 2026-11-08. The wind, highlights and feather texture are procedural; the supplied storyboard is a visual reference, not a runtime texture.
 
 The Poison development preview uses the actual Koffing card, base1-51, downloaded from https://assets.tcgdex.net/en/base/base1/51/high.webp, under the same artwork ownership notice. The local Poison species/form lookup was verified against https://pokeapi.co/api/v2/type/poison on 2026-11-08; no PokéAPI request is needed during playback.

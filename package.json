@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:steel": "node scripts/verify-steel.mjs",
     "test:dark": "node scripts/verify-dark.mjs",
     "test:dragon": "node scripts/verify-dragon.mjs",
     "test:bug": "node scripts/verify-bug.mjs",

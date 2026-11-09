@@ -1,7 +1,7 @@
 import { pokemonTypeData } from './pokemonTypeData.ts';
 import type { CardSelection } from './tcgdex';
 import type { RevealType } from '../effects/types';
-const supported = new Set<string>(['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon', 'dark']);
+const supported = new Set<string>(['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel']);
 const normalize = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[’']/g, '').replace(/♀/g, ' f ').replace(/♂/g, ' m ').replace(/[^a-z0-9]+/g, ' ').trim();
 const entries = pokemonTypeData.map(([dex, name, species, types, base]) => ({ dex, name: normalize(name), species: normalize(species), types, base }));
