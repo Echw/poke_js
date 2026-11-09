@@ -20,10 +20,10 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 async function start() {
     const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
     const requestedReveal = previewParams?.get('reveal');
-    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel'] as const).find(
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy'] as const).find(
               (type) => type === requestedReveal,
           );
-    const initialName = previewReveal === 'steel' ? 'Metagross' : previewReveal === 'dark' ? 'Umbreon' : previewReveal === 'dragon' ? 'Dragonair' : previewReveal === 'ghost' ? 'Gastly' : previewReveal === 'rock' ? 'Geodude' : previewReveal === 'bug' ? 'Caterpie' : previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
+    const initialName = previewReveal === 'fairy' ? 'Sylveon' : previewReveal === 'steel' ? 'Metagross' : previewReveal === 'dark' ? 'Umbreon' : previewReveal === 'dragon' ? 'Dragonair' : previewReveal === 'ghost' ? 'Gastly' : previewReveal === 'rock' ? 'Geodude' : previewReveal === 'bug' ? 'Caterpie' : previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -34,7 +34,9 @@ async function start() {
 
     let cardRequestId = 0;
     const initialCard = (
-        previewReveal === 'steel'
+        previewReveal === 'fairy'
+            ? Promise.resolve({ name: 'Sylveon', image: '/textures/sylveon-preview.webp', types: ['Fairy'], dexId: [700] })
+            : previewReveal === 'steel'
             ? Promise.resolve({ name: 'Metagross', image: '/textures/metagross-preview.webp', types: ['Metal'], dexId: [376] })
             : previewReveal === 'dark'
             ? Promise.resolve({ name: 'Umbreon', image: '/textures/umbreon-preview.webp', types: ['Darkness'], dexId: [197] })

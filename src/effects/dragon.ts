@@ -29,6 +29,7 @@ export class DragonEffect implements PokemonRevealEffect {
         this.transformation = new CardTransformation(card, 'dragon', mobile);
         this.root.add(this.transformation.root);
         const streams = makeRibbons(3, 3, mobile ? 128 : 192, 12);
+        const orbits = makeRibbons(2, 2, mobile ? 80 : 112, 6);
         const pool = new THREE.PlaneGeometry(1.50, 1.50, 1, 1);
         pool.rotateX(-Math.PI/2);
         pool.translate(0, -0.055, 0.46);
@@ -36,12 +37,15 @@ export class DragonEffect implements PokemonRevealEffect {
         const sparks = new THREE.PlaneGeometry(1, 1, 12, 2);
         const wisps = new THREE.PlaneGeometry(1, 1);
         const stars = new THREE.PlaneGeometry(1, 1);
+        const dust = new THREE.PlaneGeometry(1, 1);
         const sparkCount = mobile ? 48 : 64;
         const wispCount = mobile ? 9 : 14;
+        const dustCount = mobile ? 56 : 84;
         const sparkEvents = new Float32Array(sparkCount * 4);
         const launches = new Float32Array(sparkCount * 3);
         const mistSeeds = new Float32Array(wispCount * 4);
         const mistBands = new Float32Array(wispCount);
+        const dustSeeds = new Float32Array(dustCount * 4);
         const bends = [
             { band: 0, height: 0.56, side: -1 },
             { band: 1, height: 0.49, side: 1 },
@@ -52,14 +56,17 @@ export class DragonEffect implements PokemonRevealEffect {
             const bend = bends[i % bends.length];
             const seed = (i * 0.6180339) % 1;
             const height = i < 6 ? 0.035 : Math.min(bend.height + (seed - 0.5) * 0.07, (birth - 0.15) * 1.12);
-            sparkEvents.set([birth, 0.65 + (i % 4) * 0.07, bend.band, height], i * 4);
-            launches.set([bend.side * (1.3 + seed * 0.9) * (mobile ? 0.66 : 1),
+            sparkEvents.set([birth, 0.95 + (i % 4) * 0.09, bend.band, height], i * 4);
+            launches.set([bend.side * (1.8 + seed * 1.4) * (mobile ? 0.86 : 1),
                 0.20 + Math.sin(i * 2.4) * 1.0, 0.15 + seed * 0.18], i * 3);
         }
         for (let i = 0; i < wispCount; i++) {
             mistSeeds.set([(i * 0.6180339) % 1, i * 2.399963, 0.10 + (i % 3) * 0.025,
                 0.35 + (i % 5) * 0.04], i * 4);
             mistBands[i] = i % 4 === 0 ? 2 : 1;
+        }
+        for (let i = 0; i < dustCount; i++) {
+            dustSeeds.set([0.04 + (i % 13) * 0.06, i * 2.399963, (i * 0.6180339) % 0.94, 2.0 + (i % 5) * 0.18], i * 4);
         }
         flares.setAttribute('aFlare', new THREE.InstancedBufferAttribute(Float32Array.from(DRAGON_FLARES, (_, i) => i), 1));
         sparks.setAttribute('aEvent', new THREE.InstancedBufferAttribute(sparkEvents, 4));
@@ -68,11 +75,14 @@ export class DragonEffect implements PokemonRevealEffect {
         stars.setAttribute('aLaunch', sparks.getAttribute('aLaunch'));
         wisps.setAttribute('aMist', new THREE.InstancedBufferAttribute(mistSeeds, 4));
         wisps.setAttribute('aMistBand', new THREE.InstancedBufferAttribute(mistBands, 1));
-        this.geometries.push(streams, flares, sparks, pool, wisps, stars);
+        dust.setAttribute('aSeed', new THREE.InstancedBufferAttribute(dustSeeds, 4));
+        this.geometries.push(streams, orbits, flares, sparks, pool, wisps, stars, dust);
         const layers: { kind: DragonLayer; geometry: THREE.BufferGeometry; count?: number }[] = [
             { kind: 'pool', geometry: pool },
             { kind: 'wisp', geometry: wisps, count: wispCount },
             { kind: 'stream', geometry: streams },
+            { kind: 'orbit', geometry: orbits },
+            { kind: 'dust', geometry: dust, count: dustCount },
             { kind: 'flare', geometry: flares, count: DRAGON_FLARES.length },
             { kind: 'spark', geometry: sparks, count: sparkCount },
             { kind: 'star', geometry: stars, count: sparkCount },
@@ -122,9 +132,10 @@ export class DragonEffect implements PokemonRevealEffect {
             u.uGrowth.value = this.state.growth;
             u.uMorph.value = s.morph;
             u.uImage.value = s.cardImage;
-            u.uOpacity.value = (mesh.material.defines.SPARK || mesh.material.defines.STAR ? this.state.sparks : this.state.energy) * s.fade;
+            u.uOpacity.value = (mesh.material.defines.SPARK || mesh.material.defines.STAR || mesh.material.defines.DUST ? this.state.sparks : this.state.energy) * s.fade;
             if (mesh.material.defines.POOL) u.uOpacity.value *= (1-s.morph*0.6)*(1-s.cardImage);
             if (mesh.material.defines.WISP) u.uOpacity.value *= 1-s.morph*0.55;
+            if (mesh.material.defines.ORBIT) u.uOpacity.value *= (1-s.cardImage*0.75)*0.80;
         }
     }
 
@@ -146,7 +157,10 @@ export class DragonEffect implements PokemonRevealEffect {
         if (this.disposed) return;
         this.disposed = true;
         this.transformation.dispose();
-        this.meshes.forEach(mesh => mesh.material.dispose());
+        this.meshes.forEach(mesh => {
+            if (mesh instanceof THREE.InstancedMesh) mesh.dispose();
+            mesh.material.dispose();
+        });
         this.geometries.forEach(geometry => geometry.dispose());
         this.root.removeFromParent();
     }

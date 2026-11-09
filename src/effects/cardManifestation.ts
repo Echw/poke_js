@@ -108,12 +108,21 @@ const fragmentShader = /* glsl */ `
         color = mix(color,uHot,clamp(thinEdge*0.95+corners*0.10,0.0,1.0));
         alpha = uOpacity*(fill*uFill*0.94+thinEdge*0.92+halo*0.10);
         #endif
+        #ifdef FAIRY
+        float fold=sin(p.y*14.0-p.x*8.0-uTime*1.2+sin(p.x*13.0+uTime*0.5));
+        float filament=pow(1.0-abs(fold),16.0);
+        vec2 cell=floor(p*53.0),point=fract(p*53.0)-0.5;
+        float seed=fract(sin(dot(cell,vec2(127.1,311.7)))*43758.5453);
+        float dust=exp(-dot(point,point)*95.0)*step(0.975,seed);
+        alpha=uOpacity*(fill*uFill*(0.14+filament*0.13+dust*0.65)+edge*0.88+halo*0.12+corners*0.22);
+        color=mix(uBase,uHot,clamp(edge*0.85+filament*0.30+dust,0.0,1.0));
+        #endif
         #ifdef STEEL
         alpha = min(1.0, uOpacity * (fill * uFill * 1.6 + edge * 0.88 + halo * 0.08 + corners * 0.18));
         color = mix(uBase, uHot, clamp(edge * 0.95 + corners * 0.20, 0.0, 1.0));
         #endif
         gl_FragColor = vec4(color, alpha);
-        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK) || defined(DRAGON) || defined(DARK) || defined(STEEL)
+        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK) || defined(DRAGON) || defined(DARK) || defined(STEEL) || defined(FAIRY)
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #endif
@@ -168,6 +177,12 @@ export class CardManifestation {
             forceSinglePass: palette !== 'psychic',
         });
         this.mesh = new THREE.Mesh(geometry, material);
+        if (palette === 'fairy') {
+            material.defines.FAIRY = 1;
+            material.toneMapped = false;
+            material.uniforms.uBase.value = new THREE.Color(0xff459b);
+            material.uniforms.uHot.value = new THREE.Color(0xffebf5);
+        }
         if (palette === 'steel') {
             material.defines.STEEL = 1;
             material.blending = THREE.NormalBlending;
@@ -240,6 +255,11 @@ export class CardManifestation {
             context.shadowColor = '#652dff';
         }
         context.lineWidth = palette === 'grass' ? 7 : 9;
+        if (palette === 'fairy') {
+            context.strokeStyle = 'rgba(255, 115, 180, 0.40)';
+            context.shadowColor = '#ff78bd'; context.shadowBlur = 18;
+            context.lineWidth = 5;
+        }
         if (palette === 'dark') {
             context.strokeStyle = 'rgba(229, 6, 60, 0.50)';
             context.shadowColor = '#d60035'; context.shadowBlur = 16;
@@ -260,6 +280,7 @@ export class CardManifestation {
         if (palette === 'rock') context.strokeStyle = 'rgba(255, 242, 209, 0.70)';
         if (palette === 'dark') context.strokeStyle = 'rgba(255, 75, 110, 0.68)';
         if (palette === 'steel') context.strokeStyle = 'rgba(244, 249, 255, 0.78)';
+        if (palette === 'fairy') context.strokeStyle = 'rgba(255, 228, 242, 0.68)';
         context.stroke();
         const glowTexture = new THREE.CanvasTexture(canvas);
         glowTexture.colorSpace = THREE.SRGBColorSpace;

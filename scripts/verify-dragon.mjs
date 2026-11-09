@@ -123,7 +123,7 @@ try {
         await seek(page, 1.22);
         const all = await page.screenshot();
         const contribution = {};
-        for (const kind of ['stream', 'wisp', 'flare', 'spark', 'pool', 'star']) {
+        for (const kind of ['stream', 'orbit', 'dust', 'wisp', 'flare', 'spark', 'pool', 'star']) {
             await toggleKind(page, kind, false); await seek(page, 1.22);
             contribution[kind] = await difference(page, await page.screenshot(), all);
             assert.ok(contribution[kind].changed > (profile === 'desktop' ? 20 : 4), `${profile}: ${kind} changes rendered pixels`);

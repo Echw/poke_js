@@ -5,6 +5,8 @@ import { makeFireflyRoute, sampleFirefly } from '../src/effects/bugMotion.ts';
 import { Vector3 } from 'three';
 
 const cases = [
+    ['Sylveon',700,'fairy'],['Clefairy',35,'fairy'],['Flabébé',669,'fairy'],['Alolan Ninetales',38,'ice'],
+    ['Gardevoir',282,'psychic'],['Mimikyu',778,'ghost'],['Mawile',303,'steel'],['Togekiss',468,'fairy'],
     ['Metagross',376,'steel'],['Beldum',374,'steel'],['Steelix',208,'steel'],['Scizor',212,'bug'],['Empoleon',395,'water'],
     ['Umbreon',197,'dark'],['Murkrow',198,'dark'],['Sneasel',215,'dark'],['Darkrai',491,'dark'],
     ['Caterpie',10,'bug'],['Butterfree',12,'bug'],['Weedle',13,'bug'],['Scyther',123,'bug'],
