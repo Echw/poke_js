@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { RevealPalette } from './cardTransformation';
 import { createFrozenCardMaterial } from './iceMaterial';
+import { spectralFlowGLSL } from './ghostVolume';
 
 const vertexShader = /* glsl */ `
     varying vec2 vUv;
@@ -22,6 +23,10 @@ const fragmentShader = /* glsl */ `
     uniform float uElectricActivity;
     #endif
     varying vec2 vUv;
+
+    #ifdef DARK
+    ${spectralFlowGLSL}
+    #endif
 
     float roundedBox(vec2 p, vec2 halfSize, float radius) {
         vec2 q = abs(p) - halfSize + radius;
@@ -96,8 +101,15 @@ const fragmentShader = /* glsl */ `
         color=mix(uBase,vec3(0.30,0.015,0.85),fold*0.5+0.5);
         color=mix(color,uHot,clamp(edge*0.75+corners*0.22+vein*0.25+star,0.0,1.0));
         #endif
+        #ifdef DARK
+        float shadowFold = spectralMatter(vec3(p*0.7,0.21),uTime*0.55);
+        float thinEdge = exp(-abs(distanceToShape)*100.0);
+        color = mix(vec3(0.005,0.0002,0.001),vec3(0.025,0.0007,0.007),shadowFold*shadowFold);
+        color = mix(color,uHot,clamp(thinEdge*0.95+corners*0.10,0.0,1.0));
+        alpha = uOpacity*(fill*uFill*0.94+thinEdge*0.92+halo*0.10);
+        #endif
         gl_FragColor = vec4(color, alpha);
-        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK) || defined(DRAGON)
+        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK) || defined(DRAGON) || defined(DARK)
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #endif
@@ -152,6 +164,13 @@ export class CardManifestation {
             forceSinglePass: palette !== 'psychic',
         });
         this.mesh = new THREE.Mesh(geometry, material);
+        if (palette === 'dark') {
+            material.defines.DARK = 1;
+            material.blending = THREE.NormalBlending;
+            material.toneMapped = false;
+            material.uniforms.uBase.value = new THREE.Color(0x20020c);
+            material.uniforms.uHot.value = new THREE.Color(0xff2559);
+        }
         if (palette === 'rock') {
             material.uniforms.uBase.value = new THREE.Color(0xe6b975);
             material.uniforms.uHot.value = new THREE.Color(0xfff2d1);
@@ -211,6 +230,11 @@ export class CardManifestation {
             context.shadowColor = '#652dff';
         }
         context.lineWidth = palette === 'grass' ? 7 : 9;
+        if (palette === 'dark') {
+            context.strokeStyle = 'rgba(229, 6, 60, 0.50)';
+            context.shadowColor = '#d60035'; context.shadowBlur = 16;
+            context.lineWidth = 5;
+        }
         context.stroke();
         context.shadowBlur = 9;
         context.strokeStyle = palette === 'flying' ? 'rgba(236, 246, 255, 0.75)' : palette === 'ground' ? 'rgba(255, 222, 160, 0.75)' : palette === 'fighting' ? 'rgba(255, 190, 110, 0.9)' : palette === 'ice' || palette === 'water' ? 'rgba(215, 250, 255, 0.75)' : electric ? 'rgba(255, 253, 235, 0.92)' : palette === 'grass'
@@ -219,6 +243,7 @@ export class CardManifestation {
         context.lineWidth = palette === 'grass' || palette === 'fire' ? 2 : 3;
         if (palette === 'bug') context.strokeStyle = 'rgba(255, 255, 198, 0.72)';
         if (palette === 'rock') context.strokeStyle = 'rgba(255, 242, 209, 0.70)';
+        if (palette === 'dark') context.strokeStyle = 'rgba(255, 75, 110, 0.68)';
         context.stroke();
         const glowTexture = new THREE.CanvasTexture(canvas);
         glowTexture.colorSpace = THREE.SRGBColorSpace;

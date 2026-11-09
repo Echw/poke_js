@@ -5,6 +5,7 @@ import { makeFireflyRoute, sampleFirefly } from '../src/effects/bugMotion.ts';
 import { Vector3 } from 'three';
 
 const cases = [
+    ['Umbreon',197,'dark'],['Murkrow',198,'dark'],['Sneasel',215,'dark'],['Darkrai',491,'dark'],
     ['Caterpie',10,'bug'],['Butterfree',12,'bug'],['Weedle',13,'bug'],['Scyther',123,'bug'],
     ['Skorupi',451,'poison'],['Snom',872,'ice'],['Pidgeotto',17,'flying'],['Eevee',133,undefined],
     ['Charizard',6,'fire'],['Lapras',131,'water'],['Dewgong',87,'water'],['Jynx',124,'ice'],
@@ -13,7 +14,7 @@ const cases = [
     ['Galarian Darmanitan',555,'ice'],['Galarian Darmanitan Zen Mode',555,'ice'],
     ['Hisuian Sneasel',215,'fighting'],['Alolan Sandshrew',27,'ice'],['Alolan Marowak',105,'fire'],
     ['Paldean Wooper',194,'poison'],['Galarian Farfetch’d',83,'fighting'],['Galarian Yamask',562,'ground'],
-    ['Paldean Tauros',128,'fighting'],['Paldean Tauros Aqua Breed',128,'fighting'],['Hisuian Qwilfish',211,'poison'],
+    ['Paldean Tauros',128,'fighting'],['Paldean Tauros Aqua Breed',128,'fighting'],['Hisuian Qwilfish',211,'dark'],
     ['Gastly',92,'ghost'],['Haunter',93,'ghost'],['Misdreavus',200,'ghost'],['Duskull',355,'ghost'],['Giratina',487,'ghost'],['Gengar',94,'ghost'],['Geodude',74,'rock'],['Garchomp',445,'dragon'],
     ['Dratini',147,'dragon'],['Dragonair',148,'dragon'],['Dragonite',149,'dragon'],['Salamence',373,'dragon'],['Dialga',483,'dragon'],
     ['Alolan Raichu',26,'electric'],['M Charizard X EX',6,'fire'],['Mega Pinsir',127,'bug'],

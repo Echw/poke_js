@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:dark": "node scripts/verify-dark.mjs",
     "test:dragon": "node scripts/verify-dragon.mjs",
     "test:bug": "node scripts/verify-bug.mjs",
     "test:types": "node scripts/verify-reveal-types.mjs",

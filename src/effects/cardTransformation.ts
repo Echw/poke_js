@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 import { fightingImpulse } from './smokeProfile';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug' | 'rock' | 'ghost' | 'dragon';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug' | 'rock' | 'ghost' | 'dragon' | 'dark';
 
 /** Shared handoff times, in seconds from the Ball opening. */
 export const CARD_REVEAL_TIMING = {
@@ -63,6 +63,10 @@ const coreFragment = /* glsl */ `
         #endif
         #ifdef GHOST_SOURCE
         color = mix(vec3(0.42,0.10,0.82),vec3(1.8,1.45,2.0),pow(facing,1.6));
+        #endif
+        #ifdef DARK_SOURCE
+        float folds = sin(vDisplacement * 3.0 + uTime * 1.4) * 0.5 + 0.5;
+        color = mix(uBase, uHot, folds * 0.32) + pow(fresnel, 2.2) * uRim * 1.1;
         #endif
         gl_FragColor = vec4(color * pulse, uOpacity);
         #endif
@@ -162,6 +166,7 @@ export class CardTransformation {
     private readonly spectral: boolean;
     private readonly ground: boolean;
     private readonly rock: boolean;
+    private readonly dark: boolean;
     private finished = false;
 
     constructor(card: THREE.Mesh, palette: RevealPalette, mobile = false, environment?: THREE.Texture) {
@@ -170,6 +175,7 @@ export class CardTransformation {
         this.spectral = palette === 'poison' || palette === 'ghost';
         this.ground = palette === 'ground';
         this.rock = palette === 'rock';
+        this.dark = palette === 'dark';
         this.fadeSourceWithCard = palette !== 'psychic';
         this.manifestation = new CardManifestation(card, palette, environment);
         this.manifestation.setActive(false);
@@ -205,6 +211,16 @@ export class CardTransformation {
         );
         this.core.position.set(0, -0.07, palette === 'flying' || palette === 'ice' || palette === 'water' || palette === 'ground' || this.spectral ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
         if (palette === 'ghost') coreMaterial.side = THREE.FrontSide;
+        if (this.dark) {
+            coreMaterial.defines.DARK_SOURCE = 1;
+            coreMaterial.uniforms.uBase.value = new THREE.Color(0x18030a);
+            coreMaterial.uniforms.uHot.value = new THREE.Color(0x710a25);
+            coreMaterial.uniforms.uRim.value = new THREE.Color(0xff154d);
+            coreMaterial.side = THREE.FrontSide;
+            this.core.geometry.dispose();
+            this.core.geometry = new THREE.SphereGeometry(0.075, mobile ? 20 : 32, mobile ? 14 : 24);
+            this.core.position.set(0, -0.28, 0.50);
+        }
         if (palette === 'dragon') {
             coreMaterial.uniforms.uBase.value = new THREE.Color(0x194dff);
             coreMaterial.uniforms.uHot.value = new THREE.Color(0xe4f7ff);
@@ -297,6 +313,14 @@ export class CardTransformation {
                 forceSinglePass: true,
             });
             const glow = new THREE.Mesh(geometry, material);
+            if (this.dark) {
+                material.uniforms.uColor.value.set(0xde0039);
+                material.uniforms.uCenterSharpness.value = 36;
+                material.uniforms.uHaloStrength.value = 0.08;
+                material.depthTest = true; material.toneMapped = false;
+                glow.scale.setScalar(0.65);
+                glow.position.set(0, -0.25, 0.30);
+            }
             if (palette === 'dragon') {
                 material.defines.DRAGON_GLOW = 1;
                 material.uniforms.uColor.value.set(0x164dff);
@@ -362,7 +386,7 @@ export class CardTransformation {
     update(time: number, edgeActivity = 0): void {
         const { core, energy, morph, silhouette, corners, cardImage, fade } = this.state;
         const sourceOpacity = fade * (this.fadeSourceWithCard ? 1 - cardImage : 1);
-        this.core.scale.setScalar(0.72 + energy * 0.35 + Math.sin(time * 11) * 0.055);
+        this.core.scale.setScalar(0.72 + energy * 0.35 + Math.sin(time * (this.dark ? 3.4 : 11)) * 0.055);
         this.core.material.uniforms.uTime.value = time;
         const burst = this.fighting ? fightingImpulse(time) : 0;
         this.core.scale.multiplyScalar(1 + burst * 0.7);
@@ -370,7 +394,7 @@ export class CardTransformation {
         for (const glow of this.glows) {
             if (glow.material.uniforms.uTime) glow.material.uniforms.uTime.value = time;
             glow.material.uniforms.uOpacity.value = (core * 0.65 + energy * 0.36)
-                * sourceOpacity * (1 - morph * 0.5) * (this.ice ? 0.9 : this.rock ? 0.45 : this.ground ? 0.42 : this.spectral ? 0.24 : 1) * (1 + burst * 1.7);
+                * sourceOpacity * (1 - morph * 0.5) * (this.dark ? 0.22 : this.ice ? 0.9 : this.rock ? 0.45 : this.ground ? 0.42 : this.spectral ? 0.24 : 1) * (1 + burst * 1.7);
         }
         this.manifestation.update(time, morph,
             this.finished ? 0 : silhouette * fade * (1 - cardImage),

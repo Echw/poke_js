@@ -1,22 +1,30 @@
+/** Advected Ghost folds shared by shadow materials; positions are in model-local space. */
+export const spectralFlowGLSL = /* glsl */ `
+    float spectralMatter(vec3 p, float time) {
+        p.y -= time * 0.58;
+        p.x += sin(p.y * 5.0 + p.z * 4.0 + time * 0.3) * 0.10;
+        float folds = sin(p.x * 24.0 + sin(p.y * 12.0)) * sin(p.y * 15.0 - p.z * 19.0);
+        float fine = sin(p.x * 47.0 + p.y * 28.0) * sin(p.z * 36.0 - p.y * 21.0);
+        return 0.16 + 0.84 * smoothstep(-0.60, 0.74, folds + fine * 0.35);
+    }
+    float spectralFlowLight(float progress, float phase, float time) {
+        return pow(0.5 + 0.5 * sin(progress * 9.0 - time * 2.1 + phase), 6.0);
+    }
+`;
+
 /** Smoke condensations sampled in the shared Fighting volume; light ribbons are meshes. */
 export const ghostVolumeGLSL = /* glsl */ `
     #ifdef GHOST_SMOKE
     uniform float uGhostTime;
     uniform vec3 uGhostBase, uGhostMid, uGhostEdge;
+    ${spectralFlowGLSL}
 
     float ghostMatter(vec3 p) {
-        // Advect structure upwards, independently of the slower curve deformation.
-        p.y -= uGhostTime * 0.58;
-        p.x += sin(p.y * 5.0 + p.z * 4.0 + uGhostTime * 0.3) * 0.10;
-        float folds = sin(p.x * 24.0 + sin(p.y * 12.0)) * sin(p.y * 15.0 - p.z * 19.0);
-        float fine = sin(p.x * 47.0 + p.y * 28.0) * sin(p.z * 36.0 - p.y * 21.0);
-        return 0.16 + 0.84 * smoothstep(-0.60, 0.74, folds + fine * 0.35);
+        return spectralMatter(p, uGhostTime);
     }
 
     float ghostFlowLight(float progress, float phase) {
-        // Broad light packets travel towards the tips; there is no frame-wise flicker.
-        float wave = 0.5 + 0.5 * sin(progress * 9.0 - uGhostTime * 2.1 + phase);
-        return pow(wave, 6.0);
+        return spectralFlowLight(progress, phase, uGhostTime);
     }
 
     // Density, dark eyes, rim-weighted density and flow-light-weighted density.

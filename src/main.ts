@@ -20,10 +20,10 @@ async function loadCardImage(scene: Scene, imageBase: string, isCurrent: () => b
 async function start() {
     const previewParams = import.meta.env.DEV ? new URLSearchParams(window.location.search) : undefined;
     const requestedReveal = previewParams?.get('reveal');
-    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon'] as const).find(
+    const previewReveal = (['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon', 'dark'] as const).find(
               (type) => type === requestedReveal,
           );
-    const initialName = previewReveal === 'dragon' ? 'Dragonair' : previewReveal === 'ghost' ? 'Gastly' : previewReveal === 'rock' ? 'Geodude' : previewReveal === 'bug' ? 'Caterpie' : previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
+    const initialName = previewReveal === 'dark' ? 'Umbreon' : previewReveal === 'dragon' ? 'Dragonair' : previewReveal === 'ghost' ? 'Gastly' : previewReveal === 'rock' ? 'Geodude' : previewReveal === 'bug' ? 'Caterpie' : previewReveal === 'flying' ? 'Pidgeotto' : previewReveal === 'ground' ? 'Sandshrew' : previewReveal === 'poison' ? 'Koffing' : previewReveal === 'fighting' ? 'Machop' : previewReveal === 'ice' ? 'Glaceon' : previewReveal === 'water' ? 'Squirtle' : 'Abra';
     const canvas = document.querySelector<HTMLCanvasElement>('#canvas');
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
@@ -34,7 +34,9 @@ async function start() {
 
     let cardRequestId = 0;
     const initialCard = (
-        previewReveal === 'dragon'
+        previewReveal === 'dark'
+            ? Promise.resolve({ name: 'Umbreon', image: '/textures/umbreon-preview.webp', types: ['Darkness'], dexId: [197] })
+            : previewReveal === 'dragon'
             ? Promise.resolve({ name: 'Dragonair', image: '/textures/dragonair-preview.webp', types: ['Colorless'], dexId: [148] })
             : previewReveal === 'ghost'
             ? Promise.resolve({ name: 'Gastly', image: '/textures/gastly-preview.webp', types: ['Psychic'], dexId: [92] })
