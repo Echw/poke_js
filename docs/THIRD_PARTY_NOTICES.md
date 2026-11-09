@@ -1,3 +1,5 @@
+The Dragon development preview uses the actual Dragonair card, base1-18, downloaded from https://assets.tcgdex.net/en/base/base1/18/high.webp, under the same Pokémon artwork ownership notice below. Its energy, halos, flares, pool and sparks are procedural; the supplied storyboard is a visual reference, not a runtime texture.
+
 Ice Reveal references [Glacial Crown](https://github.com/achrefelouafi/LinearAbiltyCastingThreeJS), particularly its GlacierAbility, GlacierMaterial, FrostFieldMaterial and ProceduralGeometry modules. The new implementation adapts the concepts of seeded faceted prisms, per-height freeze fronts, staged fracture and frost seams to the existing Pokémon reveal contract. It does not import the upstream engine, particle manager or editor.
 
 The bounded volume follows the ray/box intersection, 3D noise sampling and front-to-back accumulation approach in the [official Three.js volume example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_volume_cloud.html). Scene-depth clipping, the hollow bowl mask and the world-down overflow field are specific to this project. The implementation targets the installed Three.js r186 WebGLRenderer.

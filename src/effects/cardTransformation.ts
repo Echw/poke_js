@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 import { fightingImpulse } from './smokeProfile';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug' | 'rock' | 'ghost';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug' | 'rock' | 'ghost' | 'dragon';
 
 /** Shared handoff times, in seconds from the Ball opening. */
 export const CARD_REVEAL_TIMING = {
@@ -133,6 +133,12 @@ const glowFragment = /* glsl */ `
         float whiteCore=exp(-d*d*80.0);
         color=mix(uColor,vec3(1.3,2.0,2.5),whiteCore*0.82);
         gl_FragColor=vec4(color,(center*0.65+halo+whiteCore*uIceCore)*uOpacity*layer);
+        #elif defined(DRAGON_GLOW)
+        vec2 p = (vUv-0.5)*2.0;
+        float rays = exp(-abs(p.x)*75.0-abs(p.y)*6.0)
+            + exp(-abs(p.y)*75.0-abs(p.x)*6.0);
+        color = mix(uColor,vec3(0.9,1.2,1.5),clamp(center*0.85+rays*0.25,0.0,1.0));
+        gl_FragColor = vec4(color,min(0.75,(center*0.62+halo+rays*0.22)*uOpacity));
         #else
         gl_FragColor = vec4(color, (center + halo) * uOpacity * layer);
         #endif
@@ -199,6 +205,15 @@ export class CardTransformation {
         );
         this.core.position.set(0, -0.07, palette === 'flying' || palette === 'ice' || palette === 'water' || palette === 'ground' || this.spectral ? 0.38 : palette === 'fire' ? 0.43 : 0.26);
         if (palette === 'ghost') coreMaterial.side = THREE.FrontSide;
+        if (palette === 'dragon') {
+            coreMaterial.uniforms.uBase.value = new THREE.Color(0x194dff);
+            coreMaterial.uniforms.uHot.value = new THREE.Color(0xe4f7ff);
+            coreMaterial.uniforms.uRim.value = new THREE.Color(0x741cff);
+            coreMaterial.side = THREE.FrontSide;
+            this.core.geometry.dispose();
+            this.core.geometry = new THREE.SphereGeometry(0.026, mobile ? 20 : 32, mobile ? 14 : 24);
+            this.core.position.set(0, -0.065, 0.46);
+        }
         if (palette === 'rock') {
             coreMaterial.uniforms.uBase.value = new THREE.Color(0xe9bb70);
             coreMaterial.uniforms.uHot.value = new THREE.Color(0xfff4d6);
@@ -239,6 +254,12 @@ export class CardTransformation {
             const pool = new THREE.PlaneGeometry(palette === 'flying' || palette === 'water' || palette === 'ground' || this.spectral ? 1.05 : 1.30, palette === 'flying' || palette === 'water' || palette === 'ground' || this.spectral ? 1.05 : 1.30);
             pool.rotateX(-Math.PI / 2);
             pool.translate(0, -0.10, 0.14);
+            if (palette === 'dragon') {
+                front.translate(0, 0.05, -0.30);
+                front.scale(0.68, 0.68, 0.68);
+                front.translate(0, -0.065, 0.47);
+                pool.translate(0, 0.025, 0.32);
+            }
             const layers: THREE.PlaneGeometry[] = [front, pool];
             if (palette === 'grass') {
                 const atmosphere = new THREE.PlaneGeometry(2.30, 2.00);
@@ -276,6 +297,14 @@ export class CardTransformation {
                 forceSinglePass: true,
             });
             const glow = new THREE.Mesh(geometry, material);
+            if (palette === 'dragon') {
+                material.defines.DRAGON_GLOW = 1;
+                material.uniforms.uColor.value.set(0x164dff);
+                material.uniforms.uCenterSharpness.value = 45;
+                material.uniforms.uHaloStrength.value = 0.25;
+                material.depthTest = true;
+                material.toneMapped = false;
+            }
             if (palette === 'rock') {
                 material.uniforms.uColor.value = new THREE.Color(0xffdda0);
                 material.uniforms.uCenterSharpness.value = 28;

@@ -43,6 +43,7 @@ export function revealTypeForCard(card: CardSelection): RevealType {
         );
     if (ice) return 'ice';
     if (isGroundCard(card)) return 'ground';
+    if (card.types.includes('Dragon')) return 'dragon';
     if (card.types.includes('Fighting')) return 'fighting';
     return card.types.includes('Lightning')
         ? 'electric'

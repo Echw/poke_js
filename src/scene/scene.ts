@@ -14,6 +14,7 @@ import { PsychicEffect } from '../effects/psychic';
 import { ElectricEffect } from '../effects/electric';
 import { GrassEffect } from '../effects/grass';
 import { FlyingEffect } from '../effects/flying';
+import { DragonEffect } from '../effects/dragon';
 import { FireEffect } from '../effects/fire';
 import { WaterEffect } from '../effects/water';
 import { IceEffect } from '../effects/ice';
@@ -99,7 +100,8 @@ export const sceneController = {
         scene.environmentIntensity = 0.8;
         pmrem.dispose();
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+        scene.add(ambientLight);
         const keyLight = new THREE.DirectionalLight(0xffffff, 2.3);
         keyLight.position.set(1.5, 2, 3);
         scene.add(keyLight);
@@ -110,6 +112,30 @@ export const sceneController = {
         scene.add(glb.scene);
         const occluders: THREE.Object3D[] = [];
         glb.scene.traverse(object => occluders.push(object));
+
+        // The GLB shares a fully metallic, white-emissive material between lid and bowl.
+        // Dragon needs subdued lid emission and blue bounce; retain the exact look for other types.
+        const originalBallLook: { mesh: THREE.Mesh; original: THREE.MeshStandardMaterial; dragon: THREE.MeshStandardMaterial }[] = [];
+        glb.scene.traverse(object => {
+            if (!(object instanceof THREE.Mesh) || !(object.material instanceof THREE.MeshStandardMaterial)) return;
+            const material = object.material.clone();
+            const bowl = object.name.startsWith('bottom_');
+            material.metalness = bowl ? 0.30 : 0.90;
+            material.roughness = bowl ? 0.48 : 0.65;
+            material.envMapIntensity = bowl ? 1 : 0.35;
+            material.emissive.set(0x365685);
+            material.emissiveIntensity = 0.32;
+            if (bowl) material.color.set(0xdce3ff);
+            originalBallLook.push({ mesh: object, original: object.material, dragon: material });
+        });
+        const setDragonLook = (enabled: boolean) => {
+            scene.environmentIntensity = enabled ? 0.50 : 0.8;
+            ambientLight.intensity = enabled ? 0.30 : 0.65;
+            keyLight.intensity = enabled ? 1.6 : 2.3;
+            for (const original of originalBallLook) {
+                original.mesh.material = enabled ? original.dragon : original.original;
+            }
+        };
 
         const frontMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
         const backMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, opacity: 0, toneMapped: false });
@@ -142,6 +168,7 @@ export const sceneController = {
         let grass: GrassEffect | undefined;
         let bug: BugEffect | undefined;
         let flying: FlyingEffect | undefined;
+        let dragon: DragonEffect | undefined;
         let fire: FireEffect | undefined;
         let water: WaterEffect | undefined;
         let ice: IceEffect | undefined;
@@ -202,7 +229,7 @@ export const sceneController = {
             activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
             card.visible = true;
             revealFill.intensity = activeEffect.fillLightIntensity;
-            if (activeEffect === rock || activeEffect === bug || activeEffect === flying || activeEffect === water || fogEffect) {
+            if (activeEffect === dragon || activeEffect === rock || activeEffect === bug || activeEffect === flying || activeEffect === water || fogEffect) {
                 glb.scene.updateWorldMatrix(true, false);
                 revealFill.position.copy(activeEffect.fillLightPosition).applyMatrix4(glb.scene.matrixWorld);
             }
@@ -273,13 +300,13 @@ export const sceneController = {
 
         const createTimeline = (reveal: RevealType) => {
             const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'rock' || reveal === 'flying' || reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? SMOKE_OPENING.duration : 1.90;
+            const openingDuration = reveal === 'dragon' || reveal === 'rock' || reveal === 'flying' || reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? SMOKE_OPENING.duration : 1.90;
             next.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             next.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
             activeEffect.addToTimeline(next);
-            next.to(card.position, { y: reveal === 'rock' || reveal === 'bug' || reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
+            next.to(card.position, { y: reveal === 'dragon' || reveal === 'rock' || reveal === 'bug' || reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
-            const cardScale = reveal === 'rock' || reveal === 'bug' || reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? 0.94 : 1.18;
+            const cardScale = reveal === 'dragon' || reveal === 'rock' || reveal === 'bug' || reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? 0.94 : 1.18;
             next.to(card.scale, { x: cardScale, y: cardScale, z: cardScale, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to([frontMaterial, backMaterial, edgeMaterial], { opacity: 1, duration: CARD_REVEAL_TIMING.fade - CARD_REVEAL_TIMING.image, ease: reveal === 'fighting' ? 'power4.out' : reveal === 'ground' ? 'power3.out' : 'power2.inOut' }, CARD_REVEAL_TIMING.image);
             return next;
@@ -405,6 +432,7 @@ export const sceneController = {
                 const epoch = ++playbackEpoch;
                 playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
                 timeline.kill();
+                setDragonLook(reveal === 'dragon');
                 if (reveal === 'electric' && !electric) {
                     electric = new ElectricEffect(card, window.innerWidth < 700);
                     electric.root.traverse((object) => { object.renderOrder = 2; });
@@ -422,6 +450,10 @@ export const sceneController = {
                 if (reveal === 'flying' && !flying) {
                     flying = new FlyingEffect(card, window.innerWidth < 700);
                     glb.scene.add(flying.root);
+                }
+                if (reveal === 'dragon' && !dragon) {
+                    dragon = new DragonEffect(card, window.innerWidth < 700);
+                    glb.scene.add(dragon.root);
                 }
                 if (reveal === 'fire' && !fire) {
                     fire = new FireEffect(card, window.innerWidth < 700);
@@ -477,7 +509,7 @@ export const sceneController = {
                     });
                 }
                 activeEffect.setActive(false);
-                activeEffect = reveal === 'rock' ? rock! : reveal === 'bug' ? bug! : reveal === 'flying' ? flying! : reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
+                activeEffect = reveal === 'dragon' ? dragon! : reveal === 'rock' ? rock! : reveal === 'bug' ? bug! : reveal === 'flying' ? flying! : reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
                     : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'ground' ? ground! : reveal === 'fighting' ? fighting! : reveal === 'ghost' ? ghost! : reveal === 'poison' ? poison! : psychic;
                 fogEffect = reveal === 'ice' ? ice : reveal === 'ground' ? ground : reveal === 'fighting' ? fighting : reveal === 'ghost' ? ghost : reveal === 'poison' ? poison : undefined;
                 mist = reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? fogVolumes.get(reveal) : undefined;
@@ -565,6 +597,7 @@ export const sceneController = {
                 grass?.dispose();
                 bug?.dispose();
                 flying?.dispose();
+                dragon?.dispose();
                 fire?.dispose();
                 water?.dispose();
                 ice?.dispose();
@@ -586,6 +619,8 @@ export const sceneController = {
                 scene.environment = null;
                 skyEnvironment.dispose();
                 environmentTarget.dispose();
+                setDragonLook(false);
+                originalBallLook.forEach(look => look.dragon.dispose());
                 const disposedGeometries = new Set<THREE.BufferGeometry>();
                 const disposedMaterials = new Set<THREE.Material>();
                 const disposedTextures = new Set<THREE.Texture>();

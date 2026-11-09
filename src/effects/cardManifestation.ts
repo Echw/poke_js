@@ -85,8 +85,19 @@ const fragmentShader = /* glsl */ `
         #ifdef FIRE
         color = mix(uBase, uHot, clamp(pow(edge, 5.0) * 0.40 + corners * 0.22, 0.0, 1.0));
         #endif
+        #ifdef DRAGON
+        float fold=sin(p.y*17.0-p.x*9.0-uTime*2.5
+            +sin(p.x*15.0+uTime)*1.3+sin(p.y*29.0+p.x*21.0-uTime)*0.65);
+        float vein=pow(1.0-abs(fold),12.0);
+        vec2 cell=floor(p*65.0);
+        float seed=fract(sin(dot(cell,vec2(127.1,311.7)))*43758.5453);
+        float star=exp(-dot(fract(p*65.0)-0.5,fract(p*65.0)-0.5)*85.0)*step(0.96,seed);
+        alpha=uOpacity*(fill*uFill*(0.42+vein*0.28+star*0.80)+edge*0.70+halo*0.12+corners*0.20);
+        color=mix(uBase,vec3(0.30,0.015,0.85),fold*0.5+0.5);
+        color=mix(color,uHot,clamp(edge*0.75+corners*0.22+vein*0.25+star,0.0,1.0));
+        #endif
         gl_FragColor = vec4(color, alpha);
-        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK)
+        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK) || defined(DRAGON)
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #endif
@@ -147,6 +158,12 @@ export class CardManifestation {
             material.defines.ROCK = 1;
         }
         this.mesh.position.z = 0.025;
+        if (palette === 'dragon') {
+            material.defines.DRAGON = 1;
+            material.toneMapped = false;
+            this.mesh.material.uniforms.uBase.value = new THREE.Color(0x305dff);
+            this.mesh.material.uniforms.uHot.value = new THREE.Color(0xeffaff);
+        }
         this.mesh.renderOrder = 4;
         this.root.add(this.mesh);
         if (palette === 'bug') {
@@ -188,6 +205,10 @@ export class CardManifestation {
             context.strokeStyle = 'rgba(239, 199, 139, 0.46)';
             context.shadowColor = '#ffdda0';
             context.shadowBlur = 18;
+        }
+        if (palette === 'dragon') {
+            context.strokeStyle = 'rgba(90, 97, 255, 0.55)';
+            context.shadowColor = '#652dff';
         }
         context.lineWidth = palette === 'grass' ? 7 : 9;
         context.stroke();
