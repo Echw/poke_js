@@ -1,7 +1,7 @@
 import { pokemonTypeData } from './pokemonTypeData.ts';
 import type { CardSelection } from './tcgdex';
 import type { RevealType } from '../effects/types';
-const supported = new Set<string>(['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy']);
+const supported = new Set<string>(['psychic', 'electric', 'grass', 'fire', 'water', 'ice', 'fighting', 'poison', 'ground', 'flying', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy', 'normal']);
 const normalize = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[’']/g, '').replace(/♀/g, ' f ').replace(/♂/g, ' m ').replace(/[^a-z0-9]+/g, ' ').trim();
 const entries = pokemonTypeData.map(([dex, name, species, types, base]) => ({ dex, name: normalize(name), species: normalize(species), types, base }));
@@ -32,5 +32,7 @@ export function speciesRevealType(card: CardSelection): RevealType | undefined {
     const forms = candidates.filter(entry => !entry.base && entry.name.split(' ').every(word => word === 'standard' || words.has(word)));
     forms.sort((a, b) => b.name.length - a.name.length);
     const selected = forms[0] || candidates.find(entry => entry.base);
-    return selected?.types.find(type => supported.has(type)) as RevealType | undefined;
+    // Preserve existing secondary-type reveals (Pidgeotto -> Flying, not Normal).
+    return (selected?.types.find(type => type !== 'normal' && supported.has(type))
+        ?? selected?.types.find(type => supported.has(type))) as RevealType | undefined;
 }

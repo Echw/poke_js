@@ -5,8 +5,15 @@ import { spectralFlowGLSL } from './ghostVolume';
 
 const vertexShader = /* glsl */ `
     varying vec2 vUv;
+    #ifdef NORMAL
+    uniform mat4 uCardToBall;
+    varying vec3 vBallPosition;
+    #endif
     void main() {
         vUv = uv;
+        #ifdef NORMAL
+        vBallPosition=(uCardToBall*vec4(position,1.0)).xyz;
+        #endif
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
 `;
@@ -23,6 +30,11 @@ const fragmentShader = /* glsl */ `
     uniform float uElectricActivity;
     #endif
     varying vec2 vUv;
+
+    #ifdef NORMAL
+    uniform float uNormalSourceLight;
+    varying vec3 vBallPosition;
+    #endif
 
     #ifdef DARK
     ${spectralFlowGLSL}
@@ -121,8 +133,15 @@ const fragmentShader = /* glsl */ `
         alpha = min(1.0, uOpacity * (fill * uFill * 1.6 + edge * 0.88 + halo * 0.08 + corners * 0.18));
         color = mix(uBase, uHot, clamp(edge * 0.95 + corners * 0.20, 0.0, 1.0));
         #endif
+        #ifdef NORMAL
+        // ShaderMaterial ignores PointLight: supply a separate, local source bounce.
+        vec3 delta=vBallPosition-vec3(0.0,-0.065,0.46);
+        float bounce=uNormalSourceLight/(1.0+dot(delta,delta)*24.0);
+        alpha=uOpacity*(fill*uFill*0.16+edge*0.60+halo*0.08+corners*0.26+bounce*fill*0.26);
+        color=mix(uBase,uHot,clamp(edge+bounce,0.0,1.0));
+        #endif
         gl_FragColor = vec4(color, alpha);
-        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK) || defined(DRAGON) || defined(DARK) || defined(STEEL) || defined(FAIRY)
+        #if defined(ELECTRIC) || defined(GRASS) || defined(FIRE) || defined(WATER) || defined(FIGHTING) || defined(POISON) || defined(ROCK) || defined(DRAGON) || defined(DARK) || defined(STEEL) || defined(FAIRY) || defined(NORMAL)
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #endif
@@ -177,6 +196,14 @@ export class CardManifestation {
             forceSinglePass: palette !== 'psychic',
         });
         this.mesh = new THREE.Mesh(geometry, material);
+        if (palette === 'normal') {
+            material.defines.NORMAL = 1;
+            material.toneMapped = false;
+            material.uniforms.uCardToBall = { value: new THREE.Matrix4() };
+            material.uniforms.uNormalSourceLight = { value: 0 };
+            material.uniforms.uBase.value = new THREE.Color(0xfff0de);
+            material.uniforms.uHot.value = new THREE.Color(0xffffff);
+        }
         if (palette === 'fairy') {
             material.defines.FAIRY = 1;
             material.toneMapped = false;
@@ -270,6 +297,11 @@ export class CardManifestation {
             context.shadowColor = '#dce8ff'; context.shadowBlur = 14;
             context.lineWidth = 5;
         }
+        if (palette === 'normal') {
+            context.strokeStyle = 'rgba(255, 242, 224, 0.32)';
+            context.shadowColor = '#fff5e9'; context.shadowBlur = 14;
+            context.lineWidth = 4;
+        }
         context.stroke();
         context.shadowBlur = 9;
         context.strokeStyle = palette === 'flying' ? 'rgba(236, 246, 255, 0.75)' : palette === 'ground' ? 'rgba(255, 222, 160, 0.75)' : palette === 'fighting' ? 'rgba(255, 190, 110, 0.9)' : palette === 'ice' || palette === 'water' ? 'rgba(215, 250, 255, 0.75)' : electric ? 'rgba(255, 253, 235, 0.92)' : palette === 'grass'
@@ -281,6 +313,7 @@ export class CardManifestation {
         if (palette === 'dark') context.strokeStyle = 'rgba(255, 75, 110, 0.68)';
         if (palette === 'steel') context.strokeStyle = 'rgba(244, 249, 255, 0.78)';
         if (palette === 'fairy') context.strokeStyle = 'rgba(255, 228, 242, 0.68)';
+        if (palette === 'normal') context.strokeStyle = 'rgba(255, 253, 247, 0.64)';
         context.stroke();
         const glowTexture = new THREE.CanvasTexture(canvas);
         glowTexture.colorSpace = THREE.SRGBColorSpace;
@@ -321,6 +354,11 @@ export class CardManifestation {
             });
         }
         uniforms.uTime.value = time;
+        if (uniforms.uCardToBall) {
+            this.card.updateMatrix(); this.mesh.updateMatrix();
+            uniforms.uCardToBall.value.multiplyMatrices(this.card.matrix, this.mesh.matrix);
+            uniforms.uNormalSourceLight.value = (1 - cardImage) * (0.65 - morph * 0.25);
+        }
         uniforms.uMorph.value = morph;
         uniforms.uOpacity.value = opacity;
         // Ice keeps the existing luminous outline over its solid frozen surface.

@@ -7,6 +7,7 @@
     "test:steel": "node scripts/verify-steel.mjs",
     "test:dark": "node scripts/verify-dark.mjs",
     "test:dragon": "node scripts/verify-dragon.mjs",
+    "test:normal": "node scripts/verify-normal.mjs",
     "test:fairy": "node scripts/verify-fairy.mjs",
     "test:bug": "node scripts/verify-bug.mjs",
     "test:types": "node scripts/verify-reveal-types.mjs",

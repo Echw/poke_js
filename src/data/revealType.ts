@@ -56,5 +56,6 @@ export function revealTypeForCard(card: CardSelection): RevealType {
             ? 'fire'
             : card.types.includes('Water')
               ? 'water'
-              : !card.types.includes('Psychic') && isFlyingCard(card) ? 'flying' : 'psychic';
+              : !card.types.includes('Psychic') && isFlyingCard(card) ? 'flying'
+                : card.types.includes('Colorless') ? 'normal' : 'psychic';
 }

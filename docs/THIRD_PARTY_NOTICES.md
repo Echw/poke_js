@@ -1,3 +1,5 @@
+The Normal development preview uses the actual Eevee card, base2-51 (Jungle), downloaded from https://assets.tcgdex.net/en/base/base2/51/high.webp, under the same Pokemon artwork ownership notice below. Its light trails, pool, points and star glints are procedural. Production search still loads the selected card.
+
 The Dragon development preview uses the actual Dragonair card, base1-18, downloaded from https://assets.tcgdex.net/en/base/base1/18/high.webp, under the same Pokémon artwork ownership notice below. Its energy, halos, flares, pool and sparks are procedural; the supplied storyboard is a visual reference, not a runtime texture.
 
 The Fairy development preview uses the actual Sylveon card, xy3-72, downloaded from https://assets.tcgdex.net/en/xy/xy3/72/high.webp, under the same Pokémon artwork ownership notice below. Its serpentines, petals, source, pool, dust and sparkles are procedural. Production search still loads the selected card.

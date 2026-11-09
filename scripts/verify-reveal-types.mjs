@@ -10,7 +10,7 @@ const cases = [
     ['Metagross',376,'steel'],['Beldum',374,'steel'],['Steelix',208,'steel'],['Scizor',212,'bug'],['Empoleon',395,'water'],
     ['Umbreon',197,'dark'],['Murkrow',198,'dark'],['Sneasel',215,'dark'],['Darkrai',491,'dark'],
     ['Caterpie',10,'bug'],['Butterfree',12,'bug'],['Weedle',13,'bug'],['Scyther',123,'bug'],
-    ['Skorupi',451,'poison'],['Snom',872,'ice'],['Pidgeotto',17,'flying'],['Eevee',133,undefined],
+    ['Skorupi',451,'poison'],['Snom',872,'ice'],['Pidgeotto',17,'flying'],['Eevee',133,'normal'],['Snorlax',143,'normal'],['Ditto',132,'normal'],['Jigglypuff',39,'fairy'],
     ['Charizard',6,'fire'],['Lapras',131,'water'],['Dewgong',87,'water'],['Jynx',124,'ice'],
     ['Bulbasaur',1,'grass'],['Gligar',207,'ground'],['Hawlucha',701,'fighting'],['Abra',63,'psychic'],
     ['Galarian Articuno',144,'psychic'],['Galarian Slowbro',80,'poison'],['Galarian Slowking',199,'poison'],
@@ -33,7 +33,7 @@ for(const [name,dex,type] of cases) {
     }
 }
 assert.equal(revealTypeForCard({name:'Unknown',dexId:[],types:['Lightning'],image:''}),'electric');
-assert.equal(revealTypeForCard({name:'Eevee',dexId:[133],types:['Colorless'],image:''}),'psychic');
+assert.equal(revealTypeForCard({name:'Eevee',dexId:[133],types:['Colorless'],image:''}),'normal');
 assert.equal(revealTypeForCard({name:'Butterfree & Lapras',dexId:[99999,12,131],types:['Water'],image:''}),'bug');
 assert.equal(revealTypeForCard({name:'Lapras & Butterfree',dexId:[131,12],types:['Grass'],image:''}),'water');
 

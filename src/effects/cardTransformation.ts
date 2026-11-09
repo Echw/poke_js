@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CardManifestation } from './cardManifestation';
 import { fightingImpulse } from './smokeProfile';
 
-export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug' | 'rock' | 'ghost' | 'dragon' | 'dark' | 'steel' | 'fairy';
+export type RevealPalette = 'psychic' | 'electric' | 'grass' | 'fire' | 'water' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'bug' | 'rock' | 'ghost' | 'dragon' | 'dark' | 'steel' | 'fairy' | 'normal';
 
 /** Shared handoff times, in seconds from the Ball opening. */
 export const CARD_REVEAL_TIMING = {
@@ -234,6 +234,16 @@ export class CardTransformation {
             this.core.geometry = new THREE.SphereGeometry(0.026, mobile ? 20 : 32, mobile ? 14 : 24);
             this.core.position.set(0, -0.065, 0.46);
         }
+        if (palette === 'normal') {
+            coreMaterial.defines.FAIRY_SOURCE = 1;
+            coreMaterial.uniforms.uBase.value = new THREE.Color(0xfff1e0);
+            coreMaterial.uniforms.uHot.value = new THREE.Color(0xffffff);
+            coreMaterial.uniforms.uRim.value = new THREE.Color(0xe2d9cb);
+            coreMaterial.side = THREE.FrontSide;
+            this.core.geometry.dispose();
+            this.core.geometry = new THREE.SphereGeometry(0.026, mobile ? 20 : 32, 16);
+            this.core.position.set(0, -0.065, 0.46);
+        }
         if (palette === 'fairy') {
             coreMaterial.defines.FAIRY_SOURCE = 1;
             coreMaterial.uniforms.uBase.value = new THREE.Color(0xff70b4);
@@ -293,7 +303,7 @@ export class CardTransformation {
             const pool = new THREE.PlaneGeometry(palette === 'flying' || palette === 'water' || palette === 'ground' || this.spectral ? 1.05 : 1.30, palette === 'flying' || palette === 'water' || palette === 'ground' || this.spectral ? 1.05 : 1.30);
             pool.rotateX(-Math.PI / 2);
             pool.translate(0, -0.10, 0.14);
-            if (palette === 'dragon' || palette === 'fairy') {
+            if (palette === 'dragon' || palette === 'fairy' || palette === 'normal') {
                 front.translate(0, 0.05, -0.30);
                 front.scale(0.68, 0.68, 0.68);
                 front.translate(0, -0.065, 0.47);
@@ -336,6 +346,12 @@ export class CardTransformation {
                 forceSinglePass: true,
             });
             const glow = new THREE.Mesh(geometry, material);
+            if (palette === 'normal') {
+                material.uniforms.uColor.value.set(0xfff5e9);
+                material.uniforms.uCenterSharpness.value = 48;
+                material.uniforms.uHaloStrength.value = 0.12;
+                material.depthTest = true; material.toneMapped = false;
+            }
             if (palette === 'fairy') {
                 material.uniforms.uColor.value.set(0xff5baf);
                 material.uniforms.uCenterSharpness.value = 44;
