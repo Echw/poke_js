@@ -31,6 +31,6 @@ export interface SmokeReplayManifest {
     preset: typeof SMOKE_PRESET; opening: { duration: number; lidDegrees: number; bodyDegrees: number };
     modelSHA256: string; sources: Record<string, string>;
     name: 'desktop' | 'mobile';
-    encoding: { bits: 8 | 12 | 16; maxDensity: number; palette: number[] };
+    encoding: { bits: 8 | 12 | 16; maxDensity: number; palette: number[]; predictor?: 'delta-u8' };
     profile: ReplayProfile;
 }

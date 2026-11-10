@@ -1,5 +1,7 @@
 # Ghost Reveal
 
+Current loading, ICEMIST4 compression and shared Fighting/Ghost source ownership are documented in [LOADING.md](LOADING.md#lossless-preload-optimization). Historical cache descriptions below predate the shared preload; density fields and the visual design are unchanged.
+
 Preview: `/?reveal=ghost`. Production search selects Ghost from the existing species/form data, including Gastly, Haunter and Gengar. Other species retain the existing first-supported-type routing.
 
 Ghost reuses the **Fighting** desktop/mobile smoke clips, emitter simulation, deformation field, bowl transforms, depth capture, raymarch and intensity controls. No new smoke simulation, baked assets, renderer, light or animation loop is allocated. The Fighting solver, profiles, clips and their source checksums are unchanged. `GpuSmokeMist.sourceVariant` selects Fighting data while `GHOST_SMOKE` selects the violet appearance.

@@ -1,6 +1,7 @@
 import groundDesktopUrl from '../assets/mist-replay/ground-desktop.bin?url';
 import groundMobileUrl from '../assets/mist-replay/ground-mobile.bin?url';
-import groundEventsSource from './groundEvents.ts?raw';
+import sourceHashes from 'virtual:smoke-source-hashes';
+import { getPokeballHash } from '../scene/pokeballAsset';
 import * as THREE from 'three';
 import { GpuTimer } from './gpuTimer';
 import { SMOKE_OPENING, SmokeBoundarySampler } from './smokeBoundary';
@@ -12,12 +13,7 @@ import fightingDesktopUrl from '../assets/mist-replay/fighting-desktop.bin?url';
 import fightingMobileUrl from '../assets/mist-replay/fighting-mobile.bin?url';
 import poisonDesktopUrl from '../assets/mist-replay/poison-desktop.bin?url';
 import poisonMobileUrl from '../assets/mist-replay/poison-mobile.bin?url';
-import profileSource from './smokeProfile.ts?raw';
 import type { ReplayProfile, SmokeReplayManifest } from './smokeReplayTypes';
-import simulationSource from './gpuSmokeSimulation.ts?raw';
-import shaderSource from './gpuSmokeShaders.ts?raw';
-import boundarySource from './smokeBoundary.ts?raw';
-import modelUrl from '../assets/pokeball.glb?url';
 import { SMOKE_DT, SMOKE_DURATION, SMOKE_FRAMES, smokeFrame } from './smokeTiming';
 import { probeSmokeFiltering } from './smokeTextureProbe';
 import { SmokeClipStore } from './smokeClipStore';
@@ -26,13 +22,21 @@ import { pruneSmokeCache } from './smokeClipCache';
 export const smokeClipUrls = [desktopClipUrl, mobileClipUrl, fightingDesktopUrl, fightingMobileUrl,
     poisonDesktopUrl, poisonMobileUrl, groundDesktopUrl, groundMobileUrl];
 export const cleanSmokeCache = () => pruneSmokeCache(smokeClipUrls);
-let modelHash: Promise<string> | undefined;
-const hex = async (data: BufferSource) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), b => b.toString(16).padStart(2, '0')).join('');
-function getModelHash(): Promise<string> {
-    return modelHash ??= fetch(modelUrl, { signal: AbortSignal.timeout(30000) }).then(response => {
-        if (!response.ok) throw new Error(`Model HTTP ${response.status}`);
-        return response.arrayBuffer();
-    }).then(hex).catch(error => { modelHash = undefined; throw error; });
+const clipUrl = (variant: SmokeVariant, mobile: boolean) => variant === 'ground' ? (mobile ? groundMobileUrl : groundDesktopUrl)
+    : variant === 'poison' ? (mobile ? poisonMobileUrl : poisonDesktopUrl)
+    : variant === 'fighting' ? (mobile ? fightingMobileUrl : fightingDesktopUrl)
+    : (mobile ? mobileClipUrl : desktopClipUrl);
+
+/** Acquire compressed sources before GPU preparation; the store limits heavy downloads to two. */
+export function prefetchSmokeClips(mobile: boolean): () => void {
+    const releases = (['ice', 'fighting', 'poison', 'ground'] as SmokeVariant[]).map(variant => {
+        const store = SmokeClipStore.acquire(clipUrl(variant, mobile));
+        let released = false;
+        const release = () => { if (!released) { released = true; store.release(); } };
+        void store.ready.catch(release);
+        return release;
+    });
+    return () => releases.forEach(release => release());
 }
 
 const stats = (values: number[]) => {
@@ -78,11 +82,7 @@ export class SmokeReplay {
         this.densityResolution = mobile ? 96 : 128;
         this.densityTiles = Math.ceil(Math.sqrt(this.densityResolution));
         this.timer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext);
-        const url = variant === 'ground' ? (mobile ? groundMobileUrl : groundDesktopUrl)
-            : variant === 'poison' ? (mobile ? poisonMobileUrl : poisonDesktopUrl)
-            : variant === 'fighting' ? (mobile ? fightingMobileUrl : fightingDesktopUrl)
-            : (mobile ? mobileClipUrl : desktopClipUrl);
-        this.store = SmokeClipStore.acquire(url);
+        this.store = SmokeClipStore.acquire(clipUrl(variant, mobile));
         this.ready = this.initialize();
     }
     get texture(): THREE.Texture { return this.targets[this.active]!.texture; }
@@ -106,10 +106,11 @@ export class SmokeReplay {
             || m.domainSize !== this.domainSize || m.domainMin.join(',') !== this.domainMin.toArray().join(',')) {
             throw new Error('Replay does not match the current preset/opening contract');
         }
-        for (const [name, source] of Object.entries({ 'gpuSmokeSimulation.ts': simulationSource, 'gpuSmokeShaders.ts': shaderSource, 'smokeBoundary.ts': boundarySource, 'smokeProfile.ts': profileSource, ...(this.variant === 'ground' ? { 'groundEvents.ts': groundEventsSource } : {}) })) {
-            if (await hex(new TextEncoder().encode(source.replace(/\r\n?/g, '\n'))) !== m.sources[name]) throw new Error(`Replay source changed: ${name}; export again`);
+        for (const [name, hash] of Object.entries(sourceHashes)) {
+            if (name === 'groundEvents.ts' && this.variant !== 'ground') continue;
+            if (hash !== m.sources[name]) throw new Error(`Replay source changed: ${name}; export again`);
         }
-        if (await getModelHash() !== m.modelSHA256) throw new Error('Replay model changed; export again');
+        if (await getPokeballHash() !== m.modelSHA256) throw new Error('Replay model changed; export again');
         const name = this.mobile ? 'mobile' : 'desktop';
         if (m.name !== name) throw new Error('Wrong smoke device profile');
         this.profile = m.profile;

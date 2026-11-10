@@ -10,7 +10,7 @@ import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import gsap from 'gsap';
 
-import pokeballUrl from '../assets/pokeball.glb?url';
+import { loadPokeball } from './pokeballAsset';
 import skyEnvironmentUrl from '../assets/sky/NightSkyHDRI006_4K_HDR.exr?url';
 import { PsychicEffect } from '../effects/psychic';
 import { ElectricEffect } from '../effects/electric';
@@ -30,7 +30,8 @@ import { SmokeBoundarySampler, SMOKE_OPENING } from '../effects/smokeBoundary';
 import { CARD_REVEAL_TIMING } from '../effects/cardTransformation';
 import { SMOKE_DURATION } from '../effects/smokeTiming';
 import { REVEAL_TYPES, type PokemonRevealEffect, type RevealType, type RevealPreparationProgress } from '../effects/types';
-import { cleanSmokeCache } from '../effects/smokeReplay';
+import { cleanSmokeCache, prefetchSmokeClips } from '../effects/smokeReplay';
+import { prefetchEffectTextures } from '../effects/effectTextures';
 import { CardTextureCache } from './cardTextureCache';
 import { createCardGeometry } from './card';
 
@@ -79,6 +80,9 @@ export const sceneController = {
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.localClippingEnabled = true;
 
+        const releaseClipPrefetch = prefetchSmokeClips(mobile);
+        const releaseTexturePrefetch = prefetchEffectTextures(mobile);
+
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('/draco/');
         const modelLoader = new GLTFLoader();
@@ -113,12 +117,13 @@ export const sceneController = {
         try {
             [skyEnvironment, glb, backTexture] = await Promise.all([
                 initialAsset(new EXRLoader().loadAsync(skyEnvironmentUrl), texture => texture.dispose()),
-                initialAsset(modelLoader.loadAsync(pokeballUrl), releaseModel),
+                initialAsset(loadPokeball(modelLoader), releaseModel),
                 initialAsset(textureLoader.loadAsync('/textures/artwork_back.webp'), texture => texture.dispose()),
             ]);
         } catch (error) {
             initializationFailed = true;
             initializedAssets.forEach(release => release());
+            releaseClipPrefetch(); releaseTexturePrefetch();
             frameTimer.dispose(); cardTextures.dispose();
             renderer.dispose();
             throw error;
@@ -146,6 +151,8 @@ export const sceneController = {
         scene.add(glb.scene);
         const occluders: THREE.Object3D[] = [];
         glb.scene.traverse(object => occluders.push(object));
+        // Capture only original GLB meshes, before cards and effect roots join the model hierarchy.
+        const ballMeshes = occluders.filter((object): object is THREE.Mesh => object instanceof THREE.Mesh);
 
         // The GLB shares a fully metallic, white-emissive material between lid and bowl.
         // Dragon needs subdued lid emission and blue bounce; retain the exact look for other types.
@@ -268,6 +275,28 @@ export const sceneController = {
         let lastShownTime = 0;
         const bufferSize = new THREE.Vector2();
         renderer.info.autoReset = false;
+        /** Share the exact depth-pass state between playback and targeted GPU preparation. */
+        const withFogDepthPass = <T>(draw: () => T): T => {
+            hiddenForDepth.length = 0;
+            const cardOpaque = fogEffect!.cardDepthVisible || (frontMaterial.opacity >= 0.999 && backMaterial.opacity >= 0.999);
+            for (const object of [cardOpaque ? undefined : card, psychic.root, electric?.root, grass?.root, bug?.root, flying?.root, fire?.root, water?.root]) {
+                if (object?.visible) { hiddenForDepth.push(object); object.visible = false; }
+            }
+            const background = scene.background, target = renderer.getRenderTarget();
+            const meshes = [...ballMeshes, ...(cardOpaque ? [card] : [])];
+            const saved = meshes.map(mesh => mesh.material);
+            try {
+                scene.background = null;
+                meshes.forEach(mesh => { mesh.material = Array.isArray(mesh.material) ? mesh.material.map(depthFor) : depthFor(mesh.material); });
+                renderer.setRenderTarget(depthTarget!);
+                return fogEffect!.withFogDepth(draw);
+            } finally {
+                meshes.forEach((mesh, i) => { mesh.material = saved[i]!; });
+                renderer.setRenderTarget(target);
+                scene.background = background;
+                hiddenForDepth.forEach(object => { object.visible = true; });
+            }
+        };
         const render = () => {
             if (disposed || (document.hidden && !preparing)) return;
             if (idle) {
@@ -309,25 +338,7 @@ export const sceneController = {
                 const hasFog = Boolean(fogEffect);
                 mist.mesh.visible = false;
                 if (hasFog && timeline.time() > 0.008 && (timeline.time() < SMOKE_DURATION || activeEffect === ghost)) {
-                    hiddenForDepth.length = 0;
-                    const cardOpaque = fogEffect!.cardDepthVisible || (frontMaterial.opacity >= 0.999 && backMaterial.opacity >= 0.999);
-                    for (const object of [cardOpaque ? undefined : card, psychic.root, electric?.root, grass?.root, bug?.root, flying?.root, fire?.root, water?.root]) {
-                        if (object?.visible) { hiddenForDepth.push(object); object.visible = false; }
-                    }
-                    const background = scene.background;
-                    const meshes = [...occluders.filter((object): object is THREE.Mesh => object instanceof THREE.Mesh), ...(cardOpaque ? [card] : [])];
-                    const saved = meshes.map(mesh => mesh.material);
-                    try {
-                        scene.background = null;
-                        meshes.forEach(mesh => { mesh.material = Array.isArray(mesh.material) ? mesh.material.map(depthFor) : depthFor(mesh.material); });
-                        renderer.setRenderTarget(depthTarget);
-                        fogEffect!.withFogDepth(() => renderer.render(scene, camera));
-                    } finally {
-                        meshes.forEach((mesh, i) => { mesh.material = saved[i]!; });
-                        renderer.setRenderTarget(null);
-                        scene.background = background;
-                        hiddenForDepth.forEach(object => { object.visible = true; });
-                    }
+                    withFogDepthPass(() => renderer.render(scene, camera));
                 }
                 if (hasFog) {
                     if (mist instanceof GpuSmokeMist) {
@@ -415,6 +426,7 @@ export const sceneController = {
         const preparedReveals = new Set<RevealType>();
         const preparations = new Map<RevealType, Promise<void>>();
         const preparationMs: Partial<Record<RevealType, number>> = {};
+        const preparationGpuMs: Partial<Record<RevealType, number>> = {};
         let preparationQueue = Promise.resolve();
         const selectReveal = (reveal: RevealType) => {
             idle = false;
@@ -535,6 +547,34 @@ export const sceneController = {
             timeline = createTimeline(reveal);
 
         };
+        /** compileAsync collects materials synchronously; restore children before its GPU wait begins.
+         * The card owns all eighteen manifestation roots, so compiling its entire subtree would
+         * prepare inactive materials with the wrong effect's lighting. These drawables own no lights.
+         */
+        const compileDrawable = (object: THREE.Object3D) => {
+            const children = object.children;
+            try {
+                object.children = [];
+                return renderer.compileAsync(object, camera, scene);
+            } finally { object.children = children; }
+        };
+
+        /** Compile current effect geometry and only the active manifestation attached to the card. */
+        const compileObjects = async (roots: THREE.Object3D[]) => {
+            const objects = new Set<THREE.Object3D>();
+            const collect = (object: THREE.Object3D) => {
+                if (object instanceof THREE.Mesh || object instanceof THREE.Points || object instanceof THREE.Line || object instanceof THREE.Sprite)
+                    objects.add(object);
+            };
+            for (const root of roots) {
+                if (root === card) {
+                    collect(card);
+                    for (const child of card.children) if (child.visible) child.traverse(collect);
+                } else root.traverse(collect);
+            }
+            await Promise.all([...objects].map(compileDrawable));
+        };
+
         /** Prepare one effect once, serializing access to the shared scene and renderer. */
         const prepareReveal = (reveal: RevealType): Promise<void> => {
             if (disposed) return Promise.reject(new Error('Scene disposed'));
@@ -544,6 +584,7 @@ export const sceneController = {
             const promise = preparationQueue.then(async () => {
                 if (disposed) throw new Error('Scene disposed');
                 const started = performance.now();
+                let gpuMs = 0;
                 preparing = true;
                 playbackWanted = false; running = false; renderer.setAnimationLoop(null);
                 try {
@@ -558,10 +599,10 @@ export const sceneController = {
                     if (mist && fogEffect) {
                         mist.reset();
                         if (!preparedFog.has(fogEffect)) {
-                            if (reveal === 'ice') await renderer.compileAsync(ice!.root, camera, scene);
-                            else await renderer.compileAsync(fogEffect.root, camera, scene);
+                            const gpuStarted = performance.now();
+                            await compileObjects([reveal === 'ice' ? ice!.root : fogEffect.root]);
                             if (disposed) throw new Error('Scene disposed');
-                            await renderer.compileAsync(card, camera, scene);
+                            await compileObjects([card]);
                             if (disposed) throw new Error('Scene disposed');
                             await fogEffect.compileFogDepth(renderer, camera, scene);
                             if (disposed) throw new Error('Scene disposed');
@@ -571,7 +612,7 @@ export const sceneController = {
                                 let compiled: Promise<unknown>;
                                 try {
                                     object.material = Array.isArray(material) ? material.map(depthFor) : depthFor(material);
-                                    compiled = renderer.compileAsync(object, camera, scene);
+                                    compiled = compileDrawable(object);
                                 } finally { object.material = material; }
                                 await compiled;
                                 if (disposed) throw new Error('Scene disposed');
@@ -579,6 +620,7 @@ export const sceneController = {
                             await mist.warmup();
                             if (disposed) throw new Error('Scene disposed');
                             preparedFog.add(fogEffect);
+                            gpuMs += performance.now() - gpuStarted;
                         }
                     }
                     if (disposed) throw new Error('Scene disposed');
@@ -586,18 +628,35 @@ export const sceneController = {
                     // Warm actual visible states, including transmission/depth buffers and material variants.
                     for (const time of [0, 1.4, 2.8, 3.5]) {
                         if (disposed) throw new Error('Scene disposed');
+                        if (mist && time === 2.8) {
+                            // Prepare the handoff's linear depth variant and transient geometry.
+                            // Neither pass needs extra smoke segments or another volume draw.
+                            const depthStarted = performance.now();
+                            timeline.time(CARD_REVEAL_TIMING.image + 0.05, true);
+                            activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
+                            await withFogDepthPass(() => compileObjects([card]));
+                            if (disposed) throw new Error('Scene disposed');
+                            withFogDepthPass(() => renderer.render(scene, camera));
+                            renderer.render(scene, camera);
+                            gpuMs += performance.now() - depthStarted;
+                        }
                         if (mist) await mist.prepare(time);
+                        const gpuStarted = performance.now();
                         timeline.time(time, true);
                         activeEffect.update(time, window.innerHeight);
-                        await renderer.compileAsync(scene, camera);
+                        // compileAsync traverses hidden roots too. Compile only the current effect and
+                        // shared objects, with the real scene's environment/lights, before the real render.
+                        await compileObjects([activeEffect.root, ...ballMeshes, card]);
                         if (disposed) throw new Error('Scene disposed');
                         render();
+                        gpuMs += performance.now() - gpuStarted;
                         await new Promise<void>(resolve => window.setTimeout(resolve, 0));
                     }
                     if (mist) { await mist.prepare(0); mist.reset(); }
                     if (disposed) throw new Error('Scene disposed');
                     selectReveal(reveal);
                     preparationMs[reveal] = performance.now() - started;
+                    preparationGpuMs[reveal] = gpuMs;
                     preparedReveals.add(reveal);
                 } catch (error) {
                     // A failed fog initialization must be recreated on Retry; successful effects stay resident.
@@ -632,6 +691,7 @@ export const sceneController = {
                 onProgress?.({ completed: preparedReveals.size, total: REVEAL_TYPES.length, type });
                 await new Promise<void>(resolve => window.setTimeout(resolve, 0));
             }
+            releaseClipPrefetch(); releaseTexturePrefetch();
             await cleanSmokeCache();
         };
 
@@ -684,7 +744,7 @@ export const sceneController = {
                 },
                 snapshot() {
                     return {
-                        prepared: [...preparedReveals], preparationMs: { ...preparationMs }, cardCache: cardTextures.snapshot(), mobile,
+                        prepared: [...preparedReveals], preparationMs: { ...preparationMs }, preparationGpuMs: { ...preparationGpuMs }, cardCache: cardTextures.snapshot(), mobile,
                         time: timeline.time(), duration: timeline.duration(), running, disposed, buffering,
                         effect: idle ? 'idle' : activeEffect.root.name,
                         idle, cardVisible: card.visible, lidAngle: lid.rotation.x - lidClosedX,
@@ -784,6 +844,7 @@ export const sceneController = {
                 stopRender();
             },
             dispose() {
+                releaseClipPrefetch(); releaseTexturePrefetch();
                 if (disposed) return;
                 disposed = true;
                 playbackWanted = false; playbackEpoch++;

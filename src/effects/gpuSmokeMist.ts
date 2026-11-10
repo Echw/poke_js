@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { GpuSmokeSimulation } from './gpuSmokeSimulation';
+import type { GpuSmokeSimulation } from './gpuSmokeSimulation';
 import { SmokeBoundarySampler } from './smokeBoundary';
 import { GpuTimer } from './gpuTimer';
 import { gpuVolumeFragment, gpuVolumeVertex } from './gpuSmokeRender';
 import { GpuSmokeOccupancy } from './gpuSmokeOccupancy';
 import { SmokeReplay } from './smokeReplay';
-import { SmokeBaker, SmokeFieldReadback } from './smokeBake';
+import type { SmokeBaker, SmokeFieldReadback } from './smokeBake';
 import { SMOKE_PRESET } from './smokeReplayTypes';
 import type { SmokeField } from './smokeReplayTypes';
 import { SMOKE_DURATION, SMOKE_DT, smokeFrame } from './smokeTiming';
@@ -49,6 +49,7 @@ export class GpuSmokeMist {
     private fallbackReason?: string;
     private baker?: SmokeBaker;
     private readback?: SmokeFieldReadback;
+    private authoring?: typeof import('./smokeAuthoring');
     private cacheKey = '';
     private poseKey = '';
     private occlusionRevision = '';
@@ -164,6 +165,9 @@ export class GpuSmokeMist {
         this.replay?.dispose(); this.replay = undefined;
         this.simulation?.dispose(); this.simulation = undefined;
         this.fallbackReason = undefined;
+        // Keep synchronous QA/export methods available after ready, without shipping these tools in production.
+        if (import.meta.env.DEV) this.authoring ??= await import('./smokeAuthoring');
+        if (this.disposed || epoch !== this.sourceEpoch) return;
         if (source === 'replay') {
             for (const key of PHYSICS_KEYS) this.settings[key] = smokeProfile(this.sourceVariant).preset[key];
             let replay: SmokeReplay | undefined;
@@ -182,7 +186,8 @@ export class GpuSmokeMist {
             }
         }
         if (!this.replay) {
-            this.simulation = new GpuSmokeSimulation(this.renderer, this.camera, this.boundary, this.settings, this.mobile, this.sourceVariant);
+            if (!this.authoring) throw new Error('Live smoke simulation is available only in development');
+            this.simulation = new this.authoring.GpuSmokeSimulation(this.renderer, this.camera, this.boundary, this.settings, this.mobile, this.sourceVariant);
             this.simulation.advanceTo(this.simulation.dt); this.simulation.reset();
             this.field = this.simulation;
         }
@@ -243,14 +248,15 @@ export class GpuSmokeMist {
     setOcclusionRevision(value: string): void { this.occlusionRevision = value; }
     clearReadback(): void { this.readback?.dispose(); this.readback = undefined; }
     exportFrame(frame: number): Uint16Array {
-        if (!this.simulation) throw new Error('Export requires the live editing source');
-        this.baker ??= new SmokeBaker(this.renderer, this.camera, this.simulation);
+        if (!this.simulation || !this.authoring) throw new Error('Export requires the live editing source');
+        this.baker ??= new this.authoring.SmokeBaker(this.renderer, this.camera, this.simulation);
         return this.baker.exportFrame(frame);
     }
     /** Hash input for acceptance checks; buffers are allocated only on this call. */
     readField(): Uint16Array {
+        if (!this.authoring) throw new Error('Field readback is available only in development');
         const n = this.field.densityResolution, tiles = this.field.densityTiles;
-        this.readback ??= new SmokeFieldReadback(this.renderer, n * tiles, n * Math.ceil(n / tiles));
+        this.readback ??= new this.authoring.SmokeFieldReadback(this.renderer, n * tiles, n * Math.ceil(n / tiles));
         return this.readback.read(this.field.texture);
     }
     update(

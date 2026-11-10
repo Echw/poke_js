@@ -1,5 +1,7 @@
 # Poison Reveal
 
+Current loading, ICEMIST4 compression and resource ownership are documented in [LOADING.md](LOADING.md#lossless-preload-optimization). Historical file sizes and codec descriptions below predate the lossless transcode; density fields and the visual design are unchanged.
+
 Poison uses the existing 3.5-second reveal, Ball model, camera, card interaction and `CardTransformation`. `?reveal=poison` selects the local Koffing base1-51 preview in development. Production selects Poison only when it is the primary type of the species/form, independently of TCG energy. The local table uses `slot === 1` from PokéAPI's Poison endpoint, verified on 2026-11-08; no runtime PokéAPI fetch is introduced. Secondary Poison follows the pre-existing resolver: Bulbasaur, Ivysaur and Venusaur retain Grass, while Koffing retains Poison. Regional forms and name aliases follow the same primary-type rule; other routing rules are unchanged.
 
 ## Reuse and ownership

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { acquireEffectTexture } from './effectTextures';
 
 /** Joined, non-convex strata with broad broken tops and deep wandering edge notches. */
 export function createGroundPillar(variant: number): THREE.BufferGeometry {
@@ -42,32 +43,23 @@ export function createGroundPillar(variant: number): THREE.BufferGeometry {
     return geometry;
 }
 
-/** Triplanar maps for non-UV rocks. Await ready before drawing; material disposal owns both maps. */
+/** Triplanar maps for non-UV rocks. Materials own leases on immutable shared maps. */
 export function createGroundMaterial(floor: THREE.Plane): { material: THREE.MeshStandardMaterial; ready: Promise<void> } {
     const material = new THREE.MeshStandardMaterial({ color: 0xe4c49e, roughness: 0.96, metalness: 0,
         vertexColors: true, flatShading: true, clippingPlanes: [floor] });
     const color = { value: null as THREE.Texture | null };
     const surface = { value: null as THREE.Texture | null };
-    const textures: THREE.Texture[] = [];
+    const colorLease = acquireEffectTexture('rockColor');
+    const surfaceLease = acquireEffectTexture('rockSurface');
     let disposed = false;
-    const loader = new THREE.TextureLoader();
-    const load = async (url: string, srgb: boolean) => {
-        const texture = await loader.loadAsync(url);
-        if (disposed) { texture.dispose(); return null; }
-        texture.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-        texture.anisotropy = 4;
-        textures.push(texture);
-        return texture;
-    };
     const ready = Promise.all([
-        load('/textures/ground/rock-color.webp', true).then(texture => { color.value = texture; }),
-        load('/textures/ground/rock-surface.webp', false).then(texture => { surface.value = texture; }),
+        colorLease.ready.then(texture => { if (!disposed) color.value = texture; }),
+        surfaceLease.ready.then(texture => { if (!disposed) surface.value = texture; }),
     ]).then(() => undefined);
     material.addEventListener('dispose', () => {
         if (disposed) return;
         disposed = true;
-        for (const texture of textures) texture.dispose();
+        colorLease.release(); surfaceLease.release();
     });
     material.onBeforeCompile = shader => {
         shader.uniforms.uRockColor = color;

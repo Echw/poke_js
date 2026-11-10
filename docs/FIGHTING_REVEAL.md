@@ -1,5 +1,7 @@
 # Fighting Reveal
 
+Current loading, ICEMIST4 compression and resource ownership are documented in [LOADING.md](LOADING.md#lossless-preload-optimization). Historical file sizes and codec descriptions below predate the lossless transcode; density fields and the visual design are unchanged.
+
 Fighting uses the existing 3.5-second reveal clock, `CardTransformation`, MAC smoke solver, bounded replay worker and depth-aware volume renderer. Cards with TCG type `Fighting` select this effect after the existing Ice species/form overrides. `?reveal=fighting` is a development preview with the local Machop base1-52 artwork; production uses the selected TCGdex card.
 
 ## Sequence

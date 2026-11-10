@@ -1,5 +1,7 @@
 # Ground Reveal
 
+Current loading, ICEMIST4 compression and resource ownership are documented in [LOADING.md](LOADING.md#lossless-preload-optimization). Historical file sizes and codec descriptions below predate the lossless transcode; density fields and the visual design are unchanged.
+
 Ground uses the existing 3.5-second clock, camera, intact Ball model and card interaction. `?reveal=ground` selects the local Sandshrew base1-62 preview. Production selects primary Ground species/forms after Poison and Ice and before the TCG Fighting fallback. The local species table was verified against [PokéAPI Ground](https://pokeapi.co/api/v2/type/ground) on 2026-11-08; playback adds no lookup.
 
 ## Composition and sequence

@@ -1,5 +1,7 @@
 # Ice Reveal
 
+Current loading, ICEMIST4 compression and resource ownership are documented in [LOADING.md](LOADING.md#lossless-preload-optimization). Historical file sizes and codec descriptions below predate the lossless transcode; density fields and the visual design are unchanged.
+
 Ice łączy kartę i kryształy z przestrzenną mgłą. Animacja trwa 3,5 s; nie ma panelu ustawień ani osobnego trybu mgły. Pozostałe warianty revealu zachowują swoje animacje.
 
 ## Lodowa korona i karta

@@ -6,6 +6,7 @@ import { launch, isolate } from './ice-test-fixture.mjs';
 import { parseSmokeClip } from '../src/effects/smokeClipFormat.ts';
 
 const production = process.argv.includes('--production');
+const motion = process.argv.includes('--motion');
 const base = process.env.LOADING_QA_URL || `http://127.0.0.1:${production ? 5175 : 5173}`;
 const out = process.env.LOADING_QA_DIR || path.join(os.tmpdir(), 'poke-loading-qa');
 await mkdir(out, { recursive: true });
@@ -75,6 +76,23 @@ try {
                 profile.starts.push(result);
                 await page.evaluate(async () => window.__pokemonReveal.debug.seek(1.4));
                 await page.screenshot({ path: path.join(out, `loading-${width}-${type}.png`) });
+                if (motion) {
+                    await page.evaluate(type => {
+                        window.loadingMotionProbe = { buffering: 0, wasBuffering: false };
+                        return window.__pokemonReveal.play(type);
+                    }, type);
+                    const motionStart = performance.now();
+                    await page.waitForFunction(() => {
+                        const state = window.__pokemonReveal.debug.snapshot(), probe = window.loadingMotionProbe;
+                        if (state.buffering && !probe.wasBuffering) probe.buffering++;
+                        probe.wasBuffering = state.buffering;
+                        return state.time >= state.duration;
+                    });
+                    const end = await page.evaluate(() => ({ state: window.__pokemonReveal.debug.snapshot(), probe: window.loadingMotionProbe }));
+                    result.motionMs = performance.now() - motionStart;
+                    result.bufferEvents = end.probe.buffering;
+                    assert.equal(end.state.programs, initial.programs, `${type}: no new shaders anywhere in real-time playback`);
+                }
             }
             for (const type of ['ice','fighting','ghost','ground','poison']) {
                 const source = type === 'ghost' ? 'fighting' : type;

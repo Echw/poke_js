@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { acquireEffectTexture, type EffectTextureLease } from './effectTextures';
 import { CardTransformation, CARD_REVEAL_TIMING as T } from './cardTransformation';
 import { makeRibbons } from './ribbonGeometry';
 import { earthPosition, earthRotation } from './earthMotion';
@@ -219,7 +220,7 @@ export class SteelEffect implements PokemonRevealEffect {
     private readonly atmosphere: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>[] = [];
     private readonly rimLight = new THREE.DirectionalLight(0xc7dcff, 0);
     private readonly accentLight = new THREE.DirectionalLight(0xf5f8ff, 0);
-    private loadedBrush?: THREE.Texture;
+    private brushLease?: EffectTextureLease;
     private finished = false;
     private disposed = false;
     private time = 0;
@@ -391,27 +392,22 @@ export class SteelEffect implements PokemonRevealEffect {
 
     /** Settle before host playback; late arrivals after timeout/disposal are discarded. */
     private loadBrush(mobile: boolean): Promise<void> {
+        const lease = this.brushLease = acquireEffectTexture(mobile ? 'steelMobile' : 'steelDesktop');
         return new Promise(resolve => {
             let settled = false;
             const finish = () => {
                 if (settled) return;
                 settled = true; window.clearTimeout(timeout); resolve();
             };
-            const timeout = window.setTimeout(finish, 4000);
-            new THREE.TextureLoader().load('/textures/steel-brushed-detail.webp', texture => {
-                if (settled || this.disposed) { texture.dispose(); finish(); return; }
-                texture.name = 'SteelBrushedDetail';
-                texture.colorSpace = THREE.NoColorSpace;
-                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(2, 1);
-                texture.anisotropy = mobile ? 2 : 4;
-                this.loadedBrush = texture;
+            const timeout = window.setTimeout(() => { lease.release(); finish(); }, 4000);
+            lease.ready.then(texture => {
+                if (settled || this.disposed) { lease.release(); finish(); return; }
                 this.metal.roughnessMap = this.metal.bumpMap = texture;
                 this.metal.roughness = 0.5;
                 this.metal.bumpScale = 0.0011;
                 this.metal.needsUpdate = true;
                 finish();
-            }, undefined, finish);
+            }, () => { lease.release(); finish(); });
         });
     }
 
@@ -585,7 +581,7 @@ export class SteelEffect implements PokemonRevealEffect {
         this.energizedJets.material.dispose();
         for (const mesh of this.atmosphere) { mesh.geometry.dispose(); mesh.material.dispose(); }
         this.rimLight.dispose(); this.accentLight.dispose();
-        this.loadedBrush?.dispose();
+        this.brushLease?.release();
         this.glintTexture.dispose(); this.brush.dispose(); this.environment.dispose();
         this.root.removeFromParent();
     }
