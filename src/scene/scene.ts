@@ -6,12 +6,13 @@ import { RockEffect } from '../effects/rock';
 import { BugEffect } from '../effects/bug';
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import gsap from 'gsap';
+import GUI from 'lil-gui';
 
 import { loadPokeball } from './pokeballAsset';
-import skyEnvironmentUrl from '../assets/sky/NightSkyHDRI006_4K_HDR.exr?url';
+import skyEnvironmentUrl from '../assets/sky/ferndale_studio_12_4k.hdr?url';
 import { PsychicEffect } from '../effects/psychic';
 import { ElectricEffect } from '../effects/electric';
 import { GrassEffect } from '../effects/grass';
@@ -34,6 +35,12 @@ import { cleanSmokeCache, prefetchSmokeClips } from '../effects/smokeReplay';
 import { prefetchEffectTextures } from '../effects/effectTextures';
 import { CardTextureCache } from './cardTextureCache';
 import { createCardGeometry } from './card';
+
+const hdrEnvironmentOptions = Object.fromEntries(
+    Object.entries(import.meta.glob<string>('../assets/sky/*.hdr', {
+        eager: true, query: '?url', import: 'default',
+    })).map(([path, url]) => [path.split('/').pop()!.replace(/\.hdr$/i, ''), url]),
+);
 
 function loadCardTexture(url: string): Promise<THREE.Texture> {
     return new Promise((resolve, reject) => {
@@ -116,7 +123,7 @@ export const sceneController = {
         });
         try {
             [skyEnvironment, glb, backTexture] = await Promise.all([
-                initialAsset(new EXRLoader().loadAsync(skyEnvironmentUrl), texture => texture.dispose()),
+                initialAsset(new HDRLoader().loadAsync(skyEnvironmentUrl), texture => texture.dispose()),
                 initialAsset(loadPokeball(modelLoader), releaseModel),
                 initialAsset(textureLoader.loadAsync('/textures/artwork_back.webp'), texture => texture.dispose()),
             ]);
@@ -134,10 +141,9 @@ export const sceneController = {
         scene.background = skyEnvironment;
         scene.backgroundIntensity = 0.65;
         const pmrem = new THREE.PMREMGenerator(renderer);
-        const environmentTarget = pmrem.fromEquirectangular(skyEnvironment);
+        let environmentTarget = pmrem.fromEquirectangular(skyEnvironment);
         scene.environment = environmentTarget.texture;
         scene.environmentIntensity = 0.8;
-        pmrem.dispose();
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
         scene.add(ambientLight);
@@ -326,40 +332,40 @@ export const sceneController = {
             renderedFrames++;
             if (frameTimingEnabled) frameTimer.begin();
             try {
-            renderer.info.reset();
-            activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
-            card.visible = true;
-            revealFill.intensity = activeEffect.fillLightIntensity;
-            if (activeEffect === normal || activeEffect === fairy || activeEffect === steel || activeEffect === dark || activeEffect === dragon || activeEffect === rock || activeEffect === bug || activeEffect === flying || activeEffect === water || fogEffect) {
-                glb.scene.updateWorldMatrix(true, false);
-                revealFill.position.copy(activeEffect.fillLightPosition).applyMatrix4(glb.scene.matrixWorld);
-            }
-            if (mist && depthTarget) {
-                const hasFog = Boolean(fogEffect);
-                mist.mesh.visible = false;
-                if (hasFog && timeline.time() > 0.008 && (timeline.time() < SMOKE_DURATION || activeEffect === ghost)) {
-                    withFogDepthPass(() => renderer.render(scene, camera));
+                renderer.info.reset();
+                activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
+                card.visible = true;
+                revealFill.intensity = activeEffect.fillLightIntensity;
+                if (activeEffect === normal || activeEffect === fairy || activeEffect === steel || activeEffect === dark || activeEffect === dragon || activeEffect === rock || activeEffect === bug || activeEffect === flying || activeEffect === water || fogEffect) {
+                    glb.scene.updateWorldMatrix(true, false);
+                    revealFill.position.copy(activeEffect.fillLightPosition).applyMatrix4(glb.scene.matrixWorld);
                 }
-                if (hasFog) {
-                    if (mist instanceof GpuSmokeMist) {
-                        glb.scene.updateWorldMatrix(true, true);
-                        mist.setOcclusionRevision(occluders.map(object => {
-                            const geometry = object instanceof THREE.Mesh ? object.geometry as THREE.BufferGeometry : undefined;
-                            const position = geometry?.getAttribute('position');
-                            return [object.visible, ...object.matrixWorld.elements, geometry?.id,
+                if (mist && depthTarget) {
+                    const hasFog = Boolean(fogEffect);
+                    mist.mesh.visible = false;
+                    if (hasFog && timeline.time() > 0.008 && (timeline.time() < SMOKE_DURATION || activeEffect === ghost)) {
+                        withFogDepthPass(() => renderer.render(scene, camera));
+                    }
+                    if (hasFog) {
+                        if (mist instanceof GpuSmokeMist) {
+                            glb.scene.updateWorldMatrix(true, true);
+                            mist.setOcclusionRevision(occluders.map(object => {
+                                const geometry = object instanceof THREE.Mesh ? object.geometry as THREE.BufferGeometry : undefined;
+                                const position = geometry?.getAttribute('position');
+                                return [object.visible, ...object.matrixWorld.elements, geometry?.id,
                                 position instanceof THREE.InterleavedBufferAttribute ? position.data.version : position?.version, geometry?.index?.version,
                                 geometry?.drawRange.start, geometry?.drawRange.count].join(',');
-                        }).join(';') + `:${fogEffect!.fogDepthRevision}:${card.visible}:${frontMaterial.opacity}:${card.matrixWorld.elements.join(',')}`);
+                            }).join(';') + `:${fogEffect!.fogDepthRevision}:${card.visible}:${frontMaterial.opacity}:${card.matrixWorld.elements.join(',')}`);
+                        }
+                        renderer.getDrawingBufferSize(bufferSize);
+                        mist.update(timeline.time(), Math.abs(lid.rotation.x - lidClosedX) / degrees(45), mistSource!, camera, depthTarget.depthTexture!);
                     }
-                    renderer.getDrawingBufferSize(bufferSize);
-                    mist.update(timeline.time(), Math.abs(lid.rotation.x-lidClosedX)/degrees(45), mistSource!, camera, depthTarget.depthTexture!);
                 }
-            }
-            renderer.render(scene, camera);
-            if (fogEffect) mist?.render(renderer, camera);
-            if (activeEffect === ghost && depthTarget?.depthTexture) {
-                ghost!.renderRibbons(renderer, camera, depthTarget.depthTexture);
-            }
+                renderer.render(scene, camera);
+                if (fogEffect) mist?.render(renderer, camera);
+                if (activeEffect === ghost && depthTarget?.depthTexture) {
+                    ghost!.renderRibbons(renderer, camera, depthTarget.depthTexture);
+                }
             } finally {
                 if (frameTimingEnabled) frameTimer.end();
             }
@@ -509,7 +515,7 @@ export const sceneController = {
                 glb.scene.add(fighting.root);
             }
             if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost') && !fogVolumes.has(reveal)) {
-                mist = new GpuSmokeMist(renderer,camera,smokeBoundary,mobile,
+                mist = new GpuSmokeMist(renderer, camera, smokeBoundary, mobile,
                     import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay', reveal, true);
                 fogVolumes.set(reveal, mist);
             }
@@ -681,7 +687,7 @@ export const sceneController = {
                 }
             });
             preparations.set(reveal, promise);
-            preparationQueue = promise.catch(() => {});
+            preparationQueue = promise.catch(() => { });
             return promise;
         };
         /** Startup barrier: all effects are initialized before the search form is enabled. */
@@ -694,6 +700,68 @@ export const sceneController = {
             releaseClipPrefetch(); releaseTexturePrefetch();
             await cleanSmokeCache();
         };
+
+        const hdrRotation = { x: 0, y: 0, z: 0 };
+        const hdrSelection = { file: skyEnvironmentUrl, status: 'Gotowe' };
+        let activeHdrUrl = skyEnvironmentUrl;
+        let hdrRequest = 0;
+        const hdrGui = new GUI({ title: 'Środowisko HDR', autoPlace: false });
+        hdrGui.domElement.classList.add('hdr-gui');
+        document.body.appendChild(hdrGui.domElement);
+        const hdrFileControl = hdrGui.add(hdrSelection, 'file', hdrEnvironmentOptions).name('Plik HDR');
+        const hdrStatusControl = hdrGui.add(hdrSelection, 'status').name('Status').disable();
+        const setHdrStatus = (status: string) => {
+            hdrSelection.status = status;
+            hdrStatusControl.updateDisplay();
+        };
+        /** Keep the active environment until its replacement is ready; latest selection wins. */
+        const switchHdrEnvironment = async (url: string) => {
+            const request = ++hdrRequest;
+            if (disposed) return;
+            if (url === activeHdrUrl) { setHdrStatus('Gotowe'); return; }
+            setHdrStatus('Ładowanie…');
+            let texture: THREE.DataTexture | undefined;
+            let target: THREE.WebGLRenderTarget;
+            try {
+                texture = await new HDRLoader().loadAsync(url);
+                if (disposed || request !== hdrRequest) { texture.dispose(); return; }
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                target = pmrem.fromEquirectangular(texture);
+            } catch (error) {
+                texture?.dispose();
+                if (disposed || request !== hdrRequest) return;
+                hdrSelection.file = activeHdrUrl;
+                hdrFileControl.updateDisplay();
+                setHdrStatus('Błąd ładowania — spróbuj ponownie');
+                console.warn('Could not load HDR environment.', error);
+                return;
+            }
+            const previousTexture = skyEnvironment;
+            const previousTarget = environmentTarget;
+            skyEnvironment = texture;
+            environmentTarget = target;
+            scene.background = skyEnvironment;
+            scene.environment = environmentTarget.texture;
+            activeHdrUrl = url;
+            previousTexture.dispose();
+            previousTarget.dispose();
+            setHdrStatus('Gotowe');
+            if (!running && !preparing) render();
+        };
+        hdrFileControl.onChange((url: string) => { void switchHdrEnvironment(url); });
+        const updateHdrRotation = () => {
+            if (disposed) return;
+            scene.backgroundRotation.set(degrees(hdrRotation.x), degrees(hdrRotation.y), degrees(hdrRotation.z));
+            scene.environmentRotation.copy(scene.backgroundRotation);
+            // Idle scenes have no animation loop; sliders still need an immediate redraw.
+            if (!running && !preparing) render();
+        };
+        const rotationControls = (['x', 'y', 'z'] as const).map(axis =>
+            hdrGui.add(hdrRotation, axis, -180, 180, 0.1)
+                .name(`Obrót ${axis.toUpperCase()} (°)`)
+                .onChange(updateHdrRotation),
+        );
+        hdrGui.add({ reset: () => rotationControls.forEach(control => control.reset()) }, 'reset').name('Wyzeruj obrót');
 
         return {
             prepareReveal,
@@ -760,7 +828,7 @@ export const sceneController = {
                         ground: ground?.getDebugInfo(),
                         rock: rock?.getDebugInfo(),
                         poison: poison?.getDebugInfo(),
-                        mist: mist ? { visible:mist.mesh.visible,kind:'gpu',...mist.getDebugInfo() } : undefined,
+                        mist: mist ? { visible: mist.mesh.visible, kind: 'gpu', ...mist.getDebugInfo() } : undefined,
                     };
                 },
                 setFlyingFeathers(visible: boolean) { flying?.setFeathersVisible(visible); render(); },
@@ -775,7 +843,7 @@ export const sceneController = {
                     if (mist instanceof GpuSmokeMist) { mist.mode = mode; render(); }
                 },
                 mistPixels: () => mist instanceof GpuSmokeMist ? mist.readPixels(renderer) : undefined,
-                setSmokeFrameTiming(enabled: boolean) { frameTimingEnabled = enabled;frameTimer.clear(); },
+                setSmokeFrameTiming(enabled: boolean) { frameTimingEnabled = enabled; frameTimer.clear(); },
                 smokeDiagnostics: () => mist instanceof GpuSmokeMist ? mist.simulation?.diagnostics() : undefined,
                 exportMistFrame: (frame: number) => mist instanceof GpuSmokeMist ? mist.exportFrame(frame) : undefined,
                 replayFrameData: () => mist instanceof GpuSmokeMist ? mist.replay?.frameData() : undefined,
@@ -791,10 +859,10 @@ export const sceneController = {
                     render();
                     if (resume && !document.hidden) { playbackWanted = true; timeline.play(); startRender(); }
                 },
-                resetSmokeTiming() { frameTimer.clear();if(mist instanceof GpuSmokeMist){mist.timer.clear();mist.simulation?.timer.clear();mist.replay?.clearTiming();mist.occupancy.timer.clear();} },
+                resetSmokeTiming() { frameTimer.clear(); if (mist instanceof GpuSmokeMist) { mist.timer.clear(); mist.simulation?.timer.clear(); mist.replay?.clearTiming(); mist.occupancy.timer.clear(); } },
                 /** Side view is for occlusion QA; normal playback retains the original camera. */
                 sideView(enabled: boolean) {
-                    if (enabled) { camera.position.set(3.0,0.6,2.0);camera.lookAt(0,0.1,0); }
+                    if (enabled) { camera.position.set(3.0, 0.6, 2.0); camera.lookAt(0, 0.1, 0); }
                     else frameCamera();
                     render();
                 },
@@ -847,6 +915,8 @@ export const sceneController = {
                 releaseClipPrefetch(); releaseTexturePrefetch();
                 if (disposed) return;
                 disposed = true;
+                hdrRequest++;
+                hdrGui.destroy();
                 playbackWanted = false; playbackEpoch++;
                 running = false;
                 cardImageRequest++;
@@ -893,6 +963,7 @@ export const sceneController = {
                 scene.environment = null;
                 skyEnvironment.dispose();
                 environmentTarget.dispose();
+                pmrem.dispose();
                 setDragonLook(false);
                 originalBallLook.forEach(look => { look.dragon.dispose(); look.dark.dispose(); look.fairy.dispose(); look.normal.dispose(); });
                 const disposedGeometries = new Set<THREE.BufferGeometry>();

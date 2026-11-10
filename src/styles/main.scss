@@ -193,3 +193,12 @@ body {
     transition: none;
   }
 }
+
+.lil-gui.hdr-gui {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  max-width: calc(100vw - 24px);
+  --width: 280px;
+}
