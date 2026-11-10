@@ -177,7 +177,7 @@ try {
         assert.notDeepEqual(moving.positions, peak.positions, 'Strips deform locally');
         assert.notDeepEqual(moving.normals, peak.normals, 'Surface orientation changes reflections');
         await seek(page, 1.18); assert.deepEqual(await geometry(page), peak, 'Seek/replay is deterministic');
-        for (const time of [0.35,0.78,1.18,1.90,2.60,3.75]) {
+        for (const time of [0.35,0.78,1.18,1.90,2.60,3.5]) {
             await seek(page, time); await page.evaluate(() => window.__pokemonReveal.debug.setBlackBackground(true));
             await page.screenshot({path:path.join(out,`${profile}-${time.toFixed(2)}.png`)});
             await page.evaluate(() => window.__pokemonReveal.debug.setBlackBackground(false));
@@ -221,7 +221,7 @@ try {
         await page.waitForFunction(() => document.querySelector('#summon-status').textContent === '' && window.__pokemonReveal.debug.snapshot().effect === 'SteelEffect');
         await seek(page, 0.7); await page.evaluate(() => window.__pokemonReveal.debug.resume(0.5));
         await page.waitForFunction(() => window.__pokemonReveal.debug.snapshot().time > 1.35);
-        await seek(page, 3.75);
+        await seek(page, 3.5);
         await page.setViewportSize({width:width-30,height:height-60});
         assert.equal((await state(page)).effect, 'SteelEffect');
         report.profiles.push({profile, reflections, atmosphere, energyContribution,

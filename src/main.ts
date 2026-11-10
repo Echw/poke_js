@@ -82,6 +82,7 @@ async function start() {
     let initializing = false;
     let ready = false;
     let destroyed = false;
+    let searching = false;
 
     const initialize = async () => {
         if (initializing || ready || destroyed) return;
@@ -109,8 +110,7 @@ async function start() {
                 } catch (error) { console.warn('Could not load initial card image.', error); }
             }
             if (destroyed) return;
-            if (imageReady) await scene.play(previewReveal);
-            else scene.showIdle();
+            if (!imageReady) scene.showIdle();
             if (destroyed) return;
             loaderMessage.textContent = 'Gotowe';
             ready = true;
@@ -118,7 +118,16 @@ async function start() {
             searchForm.setAttribute('aria-busy', 'false');
             submitButton.disabled = false;
             status.textContent = !previewReveal || imageReady ? '' : `Could not load ${initialName}. Search to try again.`;
-            loader.hidden = true;
+            loader.hidden = !(imageReady && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            if (imageReady) {
+                searching = true;
+                submitButton.disabled = true;
+                try { await scene.play(previewReveal); }
+                finally {
+                    searching = false;
+                    if (!destroyed) { submitButton.disabled = false; loader.hidden = true; }
+                }
+            }
         } catch (error) {
             console.error('Could not prepare scene.', error);
             loaderMessage.textContent = 'Nie udało się przygotować animacji. Spróbuj ponownie.';
@@ -129,11 +138,12 @@ async function start() {
 
     searchForm.addEventListener('submit', async event => {
         event.preventDefault();
-        if (!ready || !scene || destroyed) return;
-        const requestId = ++cardRequestId;
-        const isCurrent = () => !destroyed && requestId === cardRequestId;
+        if (!ready || !scene || destroyed || searching) return;
         const name = searchInput.value.trim();
         if (!name) return;
+        const requestId = ++cardRequestId;
+        const isCurrent = () => !destroyed && requestId === cardRequestId;
+        searching = true;
         submitButton.disabled = true;
         status.textContent = 'Finding card…';
         try {
@@ -144,13 +154,14 @@ async function start() {
             const applied = await loadCardImage(scene, selectedCard.image, isCurrent);
             performance.measure('pokemon:card-image', { start: started, end: performance.now() });
             if (!isCurrent() || !applied) return;
+            status.textContent = '';
             await scene.play(revealTypeForCard(selectedCard));
             if (isCurrent()) status.textContent = '';
         } catch (error) {
             console.error('Could not load card.', error);
             if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';
         } finally {
-            if (isCurrent()) submitButton.disabled = false;
+            if (isCurrent()) { searching = false; submitButton.disabled = false; }
         }
     });
     window.addEventListener('pagehide', event => {

@@ -224,7 +224,6 @@ export class SteelEffect implements PokemonRevealEffect {
     private finished = false;
     private disposed = false;
     private time = 0;
-    private readonly tail = { progress: 0 };
     private readonly lateralScale: number;
 
     constructor(card: THREE.Mesh, mobile = false) {
@@ -424,7 +423,6 @@ export class SteelEffect implements PokemonRevealEffect {
 
     addToTimeline(timeline: gsap.core.Timeline): void {
         this.transformation.addToTimeline(timeline);
-        timeline.to(this.tail, { progress: 1, duration: 0.25, ease: 'none' }, T.complete);
     }
 
     /** A broad near-horizontal sweep and a thinner rising return share one source. */
@@ -561,13 +559,13 @@ export class SteelEffect implements PokemonRevealEffect {
 
     reset(): void {
         if (this.disposed) return;
-        this.finished = false; this.tail.progress = 0;
+        this.finished = false;
         this.transformation.reset(); this.update(0, 800);
     }
 
     finish(): void {
         this.finished = true;
-        this.transformation.finish(); this.update(T.complete + 0.25, 800);
+        this.transformation.finish(); this.update(T.complete, 800);
     }
 
     dispose(): void {

@@ -59,13 +59,25 @@ try {
             for (const type of types) {
                 const result = await page.evaluate(async type => {
                     const scene = window.__pokemonReveal, started = performance.now();
-                    await scene.play(type); scene.stop();
+                    // play now resolves after the whole choreography. Measure readiness
+                    // at the throw boundary, then cancel without decoding the whole reveal.
+                    const startPrepared = async () => {
+                        const completion = scene.play(type);
+                        await new Promise(resolve => {
+                            const poll = setInterval(() => {
+                                if (scene.debug.snapshot().phase !== 'throw') return;
+                                clearInterval(poll); resolve();
+                            }, 1);
+                        });
+                        scene.stop(); await completion;
+                    };
+                    await startPrepared();
                     const startMs = performance.now() - started;
                     const first = scene.debug.snapshot();
                     await scene.debug.seek(2.8);
                     const decoded = scene.debug.snapshot().mist?.replay?.decodedSegments;
                     const replayStart = performance.now();
-                    await scene.play(type); scene.stop();
+                    await startPrepared();
                     const second = scene.debug.snapshot();
                     return { type, startMs, repeatMs: performance.now() - replayStart,
                         beforeDecoded: decoded, afterDecoded: second.mist?.replay?.decodedSegments,
@@ -132,6 +144,8 @@ try {
             await page.waitForFunction(time => window.__pokemonReveal.debug.snapshot().time > time, paused);
             await page.evaluate(() => window.__pokemonReveal.stop());
             // Exercise actual search events, including texture eviction and repeated-query hits.
+            // Motion is covered above; cache stress does not need fifty complete throws.
+            await page.emulateMedia({ reducedMotion: 'reduce' });
             for (let index = 0; index < 50; index++) {
                 await page.locator('#pokemon-name').fill(`card${index}`);
                 await page.locator('button[type=submit]').click();

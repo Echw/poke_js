@@ -80,7 +80,7 @@ zero intensity. `PokemonRevealEffect` is unchanged.
 | Steel orbit | 0.95–1.35 s | Full shared vortex and richest particle emission |
 | Materialization | 1.45–2.15 s | Shared luminous card silhouette; metal clears its footprint |
 | Emergence | 2.15–3.12 s | Actual image appears; sweeps shorten and debris falls |
-| Final | 3.12–3.75 s | Main vortex disappears; three flakes settle in the basin |
+| Final | 3.12–3.5 s | Main vortex disappears; three flakes settle in the basin |
 
 Absolute-time deformation and seeded launches support backwards seeking,
 interruption and replay. Reduced motion reaches the final pose through the host.

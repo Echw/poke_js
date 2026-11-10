@@ -36,6 +36,21 @@ import { prefetchEffectTextures } from '../effects/effectTextures';
 import { CardTextureCache } from './cardTextureCache';
 import { createCardGeometry } from './card';
 
+const BALL_MOTION = {
+    throwDuration: 1.20, settleDuration: 0.10, openingDuration: SMOKE_OPENING.duration,
+    entryDepthMultiplier: 7, controlDepthMultiplier: 4.9,
+    entryScreenY: 0.72, controlScreenX: 0.31, controlScreenY: 0.23,
+    flightBrakeStart: 0.78, spinBrakeStart: 0.72,
+    dropDuration: 0.65, spinTurns: 2, spinAxisTiltDegrees: 15, dropTiltX: 7, dropTiltZ: -5,
+} as const;
+
+/** Constant travel feeds a short cubic brake with continuous velocity at the join. */
+function coastThenBrake(progress: number, brakeStart: number): number {
+    const coastEnd = brakeStart / (brakeStart + (1 - brakeStart) / 3);
+    if (progress <= brakeStart) return progress * coastEnd / brakeStart;
+    return 1 - (1 - coastEnd) * ((1 - progress) / (1 - brakeStart)) ** 3;
+}
+
 const hdrEnvironmentOptions = Object.fromEntries(
     Object.entries(import.meta.glob<string>('../assets/sky/*.hdr', {
         eager: true, query: '?url', import: 'default',
@@ -159,6 +174,22 @@ export const sceneController = {
         glb.scene.traverse(object => occluders.push(object));
         // Capture only original GLB meshes, before cards and effect roots join the model hierarchy.
         const ballMeshes = occluders.filter((object): object is THREE.Mesh => object instanceof THREE.Mesh);
+        // Only the original GLB travels. Card/effect coordinates remain in glb.scene.
+        const closedBounds = new THREE.Box3().setFromObject(glb.scene);
+        const ballCenter = closedBounds.getCenter(new THREE.Vector3());
+        const ballRadius = closedBounds.getSize(new THREE.Vector3()).length() / 2;
+        const modelChildren = [...glb.scene.children];
+        const ballFlight = new THREE.Group();
+        ballFlight.name = 'BallFlight';
+        const ballSpin = new THREE.Group();
+        ballSpin.name = 'BallSpin';
+        ballSpin.position.copy(ballCenter);
+        const ballOffset = new THREE.Group();
+        ballOffset.position.copy(ballCenter).negate();
+        glb.scene.add(ballFlight);
+        ballFlight.add(ballSpin);
+        ballSpin.add(ballOffset);
+        modelChildren.forEach(child => ballOffset.add(child));
 
         // The GLB shares a fully metallic, white-emissive material between lid and bowl.
         // Dragon needs subdued lid emission and blue bounce; retain the exact look for other types.
@@ -279,6 +310,20 @@ export const sceneController = {
         let playbackEpoch = 0;
         let buffering = false;
         let lastShownTime = 0;
+        type Phase = 'idle' | 'preparing' | 'throw' | 'settle' | 'opening' | 'reveal' | 'drop' | 'presented';
+        let phase: Phase = 'idle';
+        let motionTimeline: gsap.core.Timeline | undefined;
+        let resolvePlayback: ((result: 'completed' | 'cancelled') => void) | undefined;
+        let effectFinished = false;
+        let carriedEffect: { root: THREE.Group; matrix: THREE.Matrix4 } | undefined;
+        const motion = { flight: 0, spin: 0, drop: 0 };
+        const spinTilt = degrees(BALL_MOTION.spinAxisTiltDegrees);
+        const spinAxis = new THREE.Vector3(Math.sin(spinTilt), Math.cos(spinTilt), 0);
+        const flightStart = new THREE.Vector3(), flightControl = new THREE.Vector3();
+        const dropStart = new THREE.Vector3(), dropEnd = new THREE.Vector3();
+        let flightRebase = 0, dropRebase = 0;
+        const motionPoint = new THREE.Vector3(), targetCenter = new THREE.Vector3();
+        const cameraRight = new THREE.Vector3(), cameraUp = new THREE.Vector3(), cameraForward = new THREE.Vector3();
         const bufferSize = new THREE.Vector2();
         renderer.info.autoReset = false;
         /** Share the exact depth-pass state between playback and targeted GPU preparation. */
@@ -303,13 +348,54 @@ export const sceneController = {
                 hiddenForDepth.forEach(object => { object.visible = true; });
             }
         };
+        const throwCamera = camera.clone();
+        const backdrop = new THREE.Scene();
+        const shellView = new THREE.Vector3();
+        const restView = new THREE.Vector3();
+        const viewport = new THREE.Vector2();
+
+        /** Shift the lens so the shell keeps its screen path while seen from its resting angle. */
+        const renderThrow = () => {
+            camera.updateMatrixWorld();
+            camera.worldToLocal(ballSpin.getWorldPosition(shellView));
+            camera.worldToLocal(glb.scene.localToWorld(restView.copy(ballCenter)));
+            const depthRatio = shellView.z / restView.z;
+            const shiftX = shellView.x - restView.x * depthRatio;
+            const shiftY = shellView.y - restView.y * depthRatio;
+            throwCamera.position.set(shiftX, shiftY, 0).applyMatrix4(camera.matrixWorld);
+            throwCamera.quaternion.copy(camera.quaternion);
+            renderer.getSize(viewport);
+            const pixelsPerUnit = viewport.y * camera.projectionMatrix.elements[5] / (-2 * shellView.z);
+            throwCamera.setViewOffset(viewport.x, viewport.y, -shiftX * pixelsPerUnit, shiftY * pixelsPerUnit,
+                viewport.x, viewport.y);
+
+            // The studio uses the original lens. Only the closed shell needs the shifted projection.
+            const background = scene.background;
+            backdrop.background = background;
+            backdrop.backgroundRotation.copy(scene.backgroundRotation);
+            backdrop.backgroundIntensity = scene.backgroundIntensity;
+            backdrop.backgroundBlurriness = scene.backgroundBlurriness;
+            renderer.render(backdrop, camera);
+            const autoClear = renderer.autoClear;
+            try {
+                scene.background = null;
+                renderer.autoClear = false;
+                renderer.render(scene, throwCamera);
+            } finally {
+                renderer.autoClear = autoClear;
+                scene.background = background;
+                backdrop.background = null;
+            }
+        };
         const render = () => {
             if (disposed || (document.hidden && !preparing)) return;
-            if (idle) {
+            if (idle || phase === 'throw' || phase === 'settle' || phase === 'opening') {
                 card.visible = false;
+                revealFill.intensity = 0;
                 renderer.info.reset();
                 renderedFrames++;
-                renderer.render(scene, camera);
+                if (phase === 'throw') renderThrow();
+                else renderer.render(scene, camera);
                 return;
             }
             if (mist instanceof GpuSmokeMist && fogEffect && !mist.hasFrame(timeline.time())) {
@@ -317,14 +403,23 @@ export const sceneController = {
                 if (!buffering) {
                     buffering = true;
                     const desired = timeline.time(), epoch = playbackEpoch;
-                    timeline.pause(lastShownTime, true); running = false; renderer.setAnimationLoop(null);
+                    if (effectFinished) timeline.pause(); else timeline.pause(lastShownTime, true);
+                    motionTimeline?.pause(); running = false; renderer.setAnimationLoop(null);
                     void mist.prepare(desired).then(() => {
                         if (disposed || epoch !== playbackEpoch) return;
                         buffering = false;
                         timeline.time(desired, true);
                         render();
-                        if (playbackWanted && !document.hidden) { timeline.play(); startRender(); }
-                    }).catch(error => { buffering = false; console.error('Could not prepare smoke frame', error); });
+                        if (playbackWanted && !document.hidden) {
+                            if (phase === 'reveal') timeline.play(); else motionTimeline?.play();
+                            startRender();
+                        }
+                    }).catch(error => {
+                        if (disposed || epoch !== playbackEpoch) return;
+                        buffering = false; playbackWanted = false;
+                        cancelPlayback();
+                        console.error('Could not prepare smoke frame', error);
+                    });
                 }
                 return;
             }
@@ -333,7 +428,7 @@ export const sceneController = {
             if (frameTimingEnabled) frameTimer.begin();
             try {
                 renderer.info.reset();
-                activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
+                if (!effectFinished) activeEffect.update(timeline.time(), window.innerHeight * renderer.getPixelRatio());
                 card.visible = true;
                 revealFill.intensity = activeEffect.fillLightIntensity;
                 if (activeEffect === normal || activeEffect === fairy || activeEffect === steel || activeEffect === dark || activeEffect === dragon || activeEffect === rock || activeEffect === bug || activeEffect === flying || activeEffect === water || fogEffect) {
@@ -380,18 +475,142 @@ export const sceneController = {
             renderer.setAnimationLoop(null);
             render();
         };
-        const finishRender = () => {
+        const completePlayback = () => {
+            phase = 'presented';
             playbackWanted = false;
-            activeEffect.finish();
             stopRender();
-            render();
+            resolvePlayback?.('completed');
+            resolvePlayback = undefined;
+        };
+        const cancelPlayback = () => {
+            motionTimeline?.kill();
+            motionTimeline = undefined;
+            timeline.pause();
+            resolvePlayback?.('cancelled');
+            resolvePlayback = undefined;
+        };
+        const restoreEffectParent = () => {
+            if (!carriedEffect) return;
+            glb.scene.add(carriedEffect.root);
+            carriedEffect.matrix.decompose(carriedEffect.root.position, carriedEffect.root.quaternion, carriedEffect.root.scale);
+            carriedEffect = undefined;
+        };
+        const resetBall = () => {
+            restoreEffectParent();
+            ballFlight.position.set(0, 0, 0);
+            ballSpin.quaternion.identity();
+            glb.scene.rotation.set(0, 0, 0);
+            lid.rotation.x = lidClosedX;
+            motion.flight = motion.spin = motion.drop = 0;
+            flightRebase = dropRebase = 0;
+        };
+        const openBall = () => {
+            ballFlight.position.set(0, 0, 0);
+            ballSpin.quaternion.identity();
+            glb.scene.rotation.set(degrees(SMOKE_OPENING.bodyDegrees), 0, 0);
+            lid.rotation.x = lidClosedX - degrees(SMOKE_OPENING.lidDegrees);
+        };
+        /** Camera-plane bounds include the whole shell, also when tilted/open. */
+        const outsideFrame = (out: THREE.Vector3, entry: boolean) => {
+            glb.scene.updateWorldMatrix(true, false);
+            targetCenter.copy(ballCenter).applyMatrix4(glb.scene.matrixWorld);
+            cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+            cameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+            camera.getWorldDirection(cameraForward);
+            const presentationDepth = motionPoint.subVectors(targetCenter, camera.position).dot(cameraForward);
+            // Physical depth makes the incoming ball small; its geometry/scale stay rigid.
+            const depth = presentationDepth * (entry ? BALL_MOTION.entryDepthMultiplier : 1);
+            const margin = ballRadius * (entry ? 1.25 : 2);
+            const fovSlope = Math.tan(degrees(camera.fov / 2));
+            const halfHeight = depth * fovSlope;
+            if (entry) {
+                const halfWidth = halfHeight * camera.aspect;
+                const clearance = margin * (1 + fovSlope * camera.aspect);
+                // Extend the entry tangent offscreen so the visible arc crosses the edge at the drawn height.
+                const risePerWidth = (BALL_MOTION.entryScreenY - BALL_MOTION.controlScreenY) / BALL_MOTION.controlScreenX;
+                const startY = BALL_MOTION.entryScreenY + risePerWidth * clearance / (2 * halfWidth);
+                out.copy(camera.position).addScaledVector(cameraForward, depth)
+                    .addScaledVector(cameraRight, -halfWidth - clearance)
+                    .addScaledVector(cameraUp, (1 - 2 * startY) * halfHeight);
+            } else {
+                out.copy(targetCenter);
+                out.y = camera.position.y - halfHeight - margin * (1 + fovSlope);
+            }
+        };
+        const putBallCenter = (world: THREE.Vector3) => {
+            ballFlight.position.copy(world);
+            glb.scene.worldToLocal(ballFlight.position).sub(ballCenter);
+        };
+        const setFlightControl = () => {
+            camera.getWorldDirection(cameraForward);
+            const presentationDepth = motionPoint.subVectors(targetCenter, camera.position).dot(cameraForward);
+            const depth = presentationDepth * BALL_MOTION.controlDepthMultiplier;
+            const halfHeight = depth * Math.tan(degrees(camera.fov / 2));
+            flightControl.copy(camera.position).addScaledVector(cameraForward, depth)
+                .addScaledVector(cameraRight, (2 * BALL_MOTION.controlScreenX - 1) * halfHeight * camera.aspect)
+                .addScaledVector(cameraUp, (1 - 2 * BALL_MOTION.controlScreenY) * halfHeight);
+            // After resize, use the control point of the remaining quadratic segment.
+            flightControl.lerp(targetCenter, flightRebase);
+        };
+        const updateThrow = () => {
+            const t = flightRebase < 1 ? THREE.MathUtils.clamp((motion.flight - flightRebase) / (1 - flightRebase), 0, 1) : 1;
+            targetCenter.copy(ballCenter).applyMatrix4(glb.scene.matrixWorld);
+            motionPoint.copy(flightStart).multiplyScalar((1 - t) ** 2)
+                .addScaledVector(flightControl, 2 * (1 - t) * t).addScaledVector(targetCenter, t * t);
+            putBallCenter(motionPoint);
+            ballSpin.quaternion.setFromAxisAngle(spinAxis, motion.spin * Math.PI * 2 * BALL_MOTION.spinTurns);
+        };
+        const updateDrop = () => {
+            const t = THREE.MathUtils.clamp((motion.drop - dropRebase) / (1 - dropRebase), 0, 1);
+            putBallCenter(motionPoint.lerpVectors(dropStart, dropEnd, t));
+            ballSpin.rotation.set(degrees(BALL_MOTION.dropTiltX) * motion.drop, 0, degrees(BALL_MOTION.dropTiltZ) * motion.drop);
+        };
+        const finishReveal = () => {
+            if (effectFinished) return;
+            effectFinished = true;
+            activeEffect.finish();
+            // The remaining basin decorations leave with the shell; card manifestations
+            // are children of the independent card and never enter this hierarchy.
+            activeEffect.root.updateMatrix();
+            carriedEffect = { root: activeEffect.root, matrix: activeEffect.root.matrix.clone() };
+            ballOffset.attach(activeEffect.root);
+            phase = 'drop';
+            ballSpin.getWorldPosition(dropStart);
+            outsideFrame(dropEnd, false);
+            motion.drop = 0; dropRebase = 0;
+            motionTimeline?.kill();
+            motionTimeline = gsap.timeline({ paused: true, onComplete: completePlayback });
+            motionTimeline.to(motion, { drop: 1, duration: BALL_MOTION.dropDuration, ease: 'power1.in', onUpdate: updateDrop });
+            if (playbackWanted && !document.hidden) { motionTimeline.play(); startRender(); }
+        };
+        const startThrow = () => {
+            resetBall();
+            phase = 'throw';
+            activeEffect.root.visible = false;
+            outsideFrame(flightStart, true);
+            setFlightControl();
+            updateThrow();
+            const openingStart = BALL_MOTION.throwDuration + BALL_MOTION.settleDuration;
+            motionTimeline = gsap.timeline({ paused: true });
+            motionTimeline.to(motion, { flight: 1, duration: BALL_MOTION.throwDuration,
+                ease: t => coastThenBrake(t, BALL_MOTION.flightBrakeStart), onUpdate: updateThrow }, 0);
+            motionTimeline.to(motion, { spin: 1, duration: BALL_MOTION.throwDuration,
+                ease: t => coastThenBrake(t, BALL_MOTION.spinBrakeStart), onUpdate: updateThrow }, 0);
+            motionTimeline.call(() => { phase = 'settle'; ballFlight.position.set(0, 0, 0); ballSpin.quaternion.identity(); }, [], BALL_MOTION.throwDuration);
+            motionTimeline.call(() => { phase = 'opening'; }, [], openingStart);
+            motionTimeline.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: BALL_MOTION.openingDuration, ease: 'power1.out' }, openingStart);
+            motionTimeline.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: BALL_MOTION.openingDuration, ease: 'power1.out' }, openingStart);
+            motionTimeline.eventCallback('onComplete', () => {
+                openBall();
+                phase = 'reveal';
+                activeEffect.setActive(true);
+                timeline.play(0);
+            });
+            if (!document.hidden) { motionTimeline.play(); startRender(); }
         };
 
         const createTimeline = (reveal: RevealType) => {
-            const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishRender });
-            const openingDuration = reveal === 'normal' || reveal === 'fairy' || reveal === 'steel' || reveal === 'dark' || reveal === 'dragon' || reveal === 'rock' || reveal === 'flying' || reveal === 'electric' || reveal === 'fire' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? SMOKE_OPENING.duration : 1.90;
-            next.to(lid.rotation, { x: lidClosedX - degrees(SMOKE_OPENING.lidDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
-            next.to(glb.scene.rotation, { x: degrees(SMOKE_OPENING.bodyDegrees), duration: openingDuration, ease: 'power1.out' }, 0);
+            const next = gsap.timeline({ paused: true, onStart: startRender, onComplete: finishReveal });
             activeEffect.addToTimeline(next);
             next.to(card.position, { y: reveal === 'normal' || reveal === 'fairy' || reveal === 'steel' || reveal === 'dark' || reveal === 'dragon' || reveal === 'rock' || reveal === 'bug' || reveal === 'flying' || reveal === 'water' || reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? 0.37 : 0.40, z: 0.50, duration: CARD_REVEAL_TIMING.morphDuration, ease: 'power2.out' }, CARD_REVEAL_TIMING.morph);
             next.to(card.rotation, { x: degrees(-4), y: 0, z: 0, duration: CARD_REVEAL_TIMING.complete - CARD_REVEAL_TIMING.rotation, ease: 'power1.out' }, CARD_REVEAL_TIMING.rotation);
@@ -403,24 +622,37 @@ export const sceneController = {
         let timeline = createTimeline('psychic');
 
         const resize = () => {
+            if (phase === 'throw') { ballSpin.getWorldPosition(flightStart); flightRebase = motion.flight; }
+            if (phase === 'drop') { ballSpin.getWorldPosition(dropStart); dropRebase = motion.drop; }
             camera.aspect = window.innerWidth / window.innerHeight;
             frameCamera();
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.getDrawingBufferSize(bufferSize);
             depthTarget?.setSize(bufferSize.x, bufferSize.y);
+            if (phase === 'throw') {
+                targetCenter.copy(ballCenter).applyMatrix4(glb.scene.matrixWorld);
+                setFlightControl();
+            }
+            if (phase === 'drop' || phase === 'presented') {
+                outsideFrame(dropEnd, false);
+                if (phase === 'presented') putBallCenter(dropEnd);
+            }
             if (!running && !preparing) render();
         };
         window.addEventListener('resize', resize);
         const visibility = () => {
             if (disposed || preparing) return;
-            if (document.hidden) { timeline.pause(); running = false; renderer.setAnimationLoop(null); }
+            if (document.hidden) { timeline.pause(); motionTimeline?.pause(); running = false; renderer.setAnimationLoop(null); }
             else {
                 const epoch = playbackEpoch;
                 void (mist && fogEffect ? mist.prepare(timeline.time()) : Promise.resolve()).then(() => {
                     if (!disposed && epoch === playbackEpoch && !document.hidden) {
                         render();
-                        if (playbackWanted) { timeline.play(); startRender(); }
+                        if (playbackWanted) {
+                            if (phase === 'reveal') timeline.play(); else motionTimeline?.play();
+                            startRender();
+                        }
                     }
                 });
             }
@@ -437,6 +669,9 @@ export const sceneController = {
         const selectReveal = (reveal: RevealType) => {
             idle = false;
             timeline.kill();
+            resetBall();
+            phase = 'preparing';
+            effectFinished = false;
             setDragonLook(reveal === 'dragon');
             if (reveal === 'fairy') setFairyLook();
             if (reveal === 'normal') {
@@ -544,8 +779,7 @@ export const sceneController = {
             revealFill.position.copy(activeEffect.fillLightPosition);
             activeEffect.setActive(true);
             activeEffect.reset();
-            glb.scene.rotation.set(0, 0, 0);
-            lid.rotation.x = lidClosedX;
+            openBall();
             card.position.set(0, 0.03, 0.26);
             card.rotation.set(0, degrees(-70), degrees(-8));
             card.scale.setScalar(0.26);
@@ -769,6 +1003,10 @@ export const sceneController = {
             /** Show the closed, empty ball after preparation, retaining all warmed resources. */
             showIdle() {
                 if (disposed) return;
+                cancelPlayback();
+                resetBall();
+                phase = 'idle';
+                effectFinished = false;
                 playbackEpoch++; cardImageRequest++;
                 playbackWanted = false; buffering = false; running = false;
                 renderer.setAnimationLoop(null);
@@ -791,15 +1029,21 @@ export const sceneController = {
             debug: import.meta.env.DEV ? {
                 async seek(time: number) {
                     if (disposed || idle || !Number.isFinite(time)) return;
+                    cancelPlayback();
                     const epoch = ++playbackEpoch;
                     playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
                     timeline.pause();
                     if (mist instanceof GpuSmokeMist && fogEffect) await mist.prepare(time);
                     if (disposed || epoch !== playbackEpoch) return;
+                    restoreEffectParent();
+                    openBall();
+                    phase = 'reveal';
+                    effectFinished = false;
                     timeline.pause(0, true);
+                    activeEffect.setActive(true);
                     activeEffect.reset();
                     timeline.time(THREE.MathUtils.clamp(time, 0, timeline.duration()), true);
-                    if (time >= timeline.duration()) activeEffect.finish();
+                    if (time >= timeline.duration()) { activeEffect.finish(); effectFinished = true; }
                     stopRender();
                 },
                 /** Resume the development preview, optionally in slow motion. */
@@ -811,7 +1055,19 @@ export const sceneController = {
                     startRender();
                 },
                 snapshot() {
+                    scene.updateMatrixWorld(true);
+                    const bounds = new THREE.Box3();
+                    ballMeshes.forEach(mesh => bounds.expandByObject(mesh));
+                    const projected = new THREE.Box3();
+                    for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y])
+                        for (const z of [bounds.min.z, bounds.max.z]) projected.expandByPoint(new THREE.Vector3(x, y, z).project(camera));
                     return {
+                        phase, motionTime: motionTimeline?.time() ?? 0,
+                        ballMatrix: ballOffset.matrixWorld.toArray(), cardMatrix: card.matrixWorld.toArray(),
+                        ballCenter: ballSpin.getWorldPosition(new THREE.Vector3()).toArray(),
+                        ballScreenCenter: ballSpin.getWorldPosition(new THREE.Vector3()).project(camera).toArray(),
+                        cameraMatrix: camera.matrixWorld.toArray(),
+                        ballBounds: { min: projected.min.toArray(), max: projected.max.toArray() },
                         prepared: [...preparedReveals], preparationMs: { ...preparationMs }, preparationGpuMs: { ...preparationGpuMs }, cardCache: cardTextures.snapshot(), mobile,
                         time: timeline.time(), duration: timeline.duration(), running, disposed, buffering,
                         effect: idle ? 'idle' : activeEffect.root.name,
@@ -835,6 +1091,11 @@ export const sceneController = {
                 setBlackBackground(enabled: boolean) { scene.background = enabled ? null : skyEnvironment; render(); },
                 model: glb.scene,
                 card,
+                /** QA controls extend the real finite timeline; no production globals. */
+                extendReveal(seconds: number) {
+                    if (Number.isFinite(seconds) && seconds > 0 && phase === 'throw')
+                        timeline.to({}, { duration: seconds });
+                },
                 mistSettings: () => mist?.settings,
                 setMistDebugView(view: 'lighting' | 'density' | 'velocity') {
                     if (mist instanceof GpuSmokeMist) { mist.debugView = view; render(); }
@@ -878,43 +1139,50 @@ export const sceneController = {
                     frontMaterial.map = texture;
                     cardTextures.pin(texture);
                     frontMaterial.needsUpdate = true;
-                    if (!running) render();
+                    if (!running && idle) render();
                     return true;
                 } finally { lease.release(); }
             },
-            async play(reveal: RevealType = 'psychic') {
-                if (disposed) return;
+            async play(reveal: RevealType = 'psychic'): Promise<'completed' | 'cancelled'> {
+                if (disposed) return 'cancelled';
+                cancelPlayback();
                 const epoch = ++playbackEpoch;
                 playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
                 timeline.kill();
                 await prepareReveal(reveal);
-                if (disposed || epoch !== playbackEpoch) return;
+                if (disposed || epoch !== playbackEpoch) return 'cancelled';
                 selectReveal(reveal);
                 if (mist) { await mist.prepare(0); mist.reset(); }
-                if (disposed || epoch !== playbackEpoch) return;
+                if (disposed || epoch !== playbackEpoch) return 'cancelled';
                 lastShownTime = 0;
+                const completion = new Promise<'completed' | 'cancelled'>(resolve => { resolvePlayback = resolve; });
                 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                     // Every fog variant needs the final frame before a render can advance there.
                     if (mist) await mist.prepare(timeline.duration());
-                    if (disposed || epoch !== playbackEpoch) return;
+                    if (disposed || epoch !== playbackEpoch) return 'cancelled';
                     timeline.progress(1, true);
-                    finishRender();
+                    finishReveal();
+                    motionTimeline?.pause();
+                    motion.drop = 1; updateDrop();
+                    completePlayback();
                 } else {
                     playbackWanted = true;
-                    timeline.play(0);
+                    startThrow();
                     if (document.hidden) visibility();
                 }
+                return completion;
             },
             stop() {
                 if (disposed) return;
                 playbackWanted = false; playbackEpoch++; buffering = false;
-                timeline.pause();
+                cancelPlayback();
                 stopRender();
             },
             dispose() {
                 releaseClipPrefetch(); releaseTexturePrefetch();
                 if (disposed) return;
                 disposed = true;
+                cancelPlayback();
                 hdrRequest++;
                 hdrGui.destroy();
                 playbackWanted = false; playbackEpoch++;
