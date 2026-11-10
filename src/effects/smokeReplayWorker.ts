@@ -1,4 +1,5 @@
-import { parseSmokeClip, restoreSmokeChunk } from './smokeClipFormat';
+import { restoreSmokeChunk } from './smokeClipFormat';
+import { loadSmokeClip } from './smokeClipCache';
 import type { SmokeReplayManifest } from './smokeReplayTypes';
 
 const scope = self as unknown as {
@@ -9,7 +10,6 @@ let queue = Promise.resolve();
 let clip: ArrayBuffer | undefined;
 let header: SmokeReplayManifest;
 let payloadOffset = 0;
-const digest = async (bytes: Uint8Array<ArrayBuffer>) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
 
 // The worker owns one compressed clip; only current/next restored FP16 segments
 // are transferred to the host. A serial queue bounds transient inflate memory.
@@ -18,17 +18,9 @@ scope.onmessage = event => {
     queue = queue.then(async () => {
         try {
             if (request.kind === 'init') {
-                const start = performance.now(), response = await fetch(request.url);
-                if (!response.ok) throw new Error(`Smoke clip HTTP ${response.status}`);
-                clip = await response.arrayBuffer();
-                ({ header, payloadOffset } = parseSmokeClip(clip));
-                const { headerSHA256, ...metadata } = header;
-                if (await digest(new TextEncoder().encode(JSON.stringify(metadata))) !== headerSHA256) throw new Error('Smoke header checksum mismatch');
-                for (const chunk of header.profile.chunks) {
-                    const bytes = new Uint8Array(clip, payloadOffset + chunk.offset, chunk.bytes);
-                    if (await digest(bytes) !== chunk.sha256) throw new Error('Smoke segment checksum mismatch');
-                }
-                scope.postMessage({ id: request.id, header, bytes: clip.byteLength, transfers: [performance.now() - start] });
+                const start = performance.now(), loaded = await loadSmokeClip(request.url);
+                clip = loaded.buffer; header = loaded.header; payloadOffset = loaded.payloadOffset;
+                scope.postMessage({ id: request.id, header, bytes: clip.byteLength, cacheHit: loaded.cacheHit, transfers: [performance.now() - start] });
                 return;
             }
             if (!clip) throw new Error('Smoke clip is not prepared');

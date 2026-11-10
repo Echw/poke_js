@@ -71,70 +71,91 @@ async function start() {
         return undefined;
     });
 
-    try {
-        const scene = await sceneController.initScene(canvas);
-        status.textContent = 'Przygotowywanie animacji…';
-        await scene.play(previewReveal);
-        if (import.meta.env.DEV) {
-            Object.assign(window, { __pokemonReveal: scene });
-        }
-        submitButton.disabled = false;
-        status.textContent = `Loading ${initialName}…`;
 
-        void (async () => {
+    const loader = document.querySelector<HTMLElement>('#startup-loader')!;
+    const loaderMessage = document.querySelector<HTMLElement>('#startup-message')!;
+    const progress = document.querySelector<HTMLProgressElement>('#startup-progress')!;
+    const retry = document.querySelector<HTMLButtonElement>('#startup-retry')!;
+    let scene: Scene | undefined;
+    let initializing = false;
+    let ready = false;
+    let destroyed = false;
+
+    const initialize = async () => {
+        if (initializing || ready || destroyed) return;
+        initializing = true;
+        retry.hidden = true;
+        loaderMessage.textContent = scene ? 'Przygotowywanie animacji…' : 'Pobieranie zasobów…';
+        try {
+            scene ??= await sceneController.initScene(canvas);
+            if (destroyed) { scene.dispose(); return; }
+            await scene.prepareAllReveals(({ completed, total }) => {
+                progress.max = total;
+                progress.value = completed;
+                loaderMessage.textContent = `Przygotowywanie animacji ${completed}/${total}`;
+            });
+            if (destroyed) return;
+            if (import.meta.env.DEV) Object.assign(window, { __pokemonReveal: scene });
             const selectedCard = await initialCard;
-            if (cardRequestId !== 0) return;
-            if (!selectedCard) {
-                status.textContent = `Could not load ${initialName}. Search to try again.`;
-                return;
+            let imageReady = false;
+            if (selectedCard) {
+                try {
+                    const localPreview = previewReveal === 'flying' ? 'pidgeotto'
+                        : previewReveal === 'ground' ? 'sandshrew' : previewReveal === 'poison' ? 'koffing'
+                        : previewReveal === 'ice' ? 'glaceon' : previewReveal === 'fighting' ? 'machop' : undefined;
+                    imageReady = await loadCardImage(scene, localPreview ? `/textures/${localPreview}-preview.webp` : selectedCard.image, () => !destroyed);
+                } catch (error) { console.warn('Could not load initial card image.', error); }
             }
-            try {
-                const applied =
-                    previewReveal === 'flying' || previewReveal === 'ice' || previewReveal === 'fighting' || previewReveal === 'ground' || previewReveal === 'poison'
-                        ? await scene.setCardImage(previewReveal === 'flying' ? '/textures/pidgeotto-preview.webp' : previewReveal === 'ground' ? '/textures/sandshrew-preview.webp' : previewReveal === 'poison' ? '/textures/koffing-preview.webp' : previewReveal === 'ice' ? '/textures/glaceon-preview.webp' : '/textures/machop-preview.webp')
-                        : await loadCardImage(scene, selectedCard.image, () => cardRequestId === 0);
-                if (cardRequestId === 0 && applied) status.textContent = '';
-            } catch (error) {
-                console.error(`Could not load ${initialName} image.`, error);
-                if (cardRequestId === 0)
-                    status.textContent = `Could not load ${initialName}. Search to try again.`;
-            }
-        })();
+            if (destroyed) return;
+            if (imageReady) await scene.play(previewReveal);
+            else scene.stop();
+            if (destroyed) return;
+            loaderMessage.textContent = 'Gotowe';
+            ready = true;
+            searchForm.inert = false;
+            searchForm.setAttribute('aria-busy', 'false');
+            submitButton.disabled = false;
+            status.textContent = imageReady ? '' : `Could not load ${initialName}. Search to try again.`;
+            loader.hidden = true;
+        } catch (error) {
+            console.error('Could not prepare scene.', error);
+            loaderMessage.textContent = 'Nie udało się przygotować animacji. Spróbuj ponownie.';
+            retry.hidden = false;
+        } finally { initializing = false; }
+    };
+    retry.addEventListener('click', () => { void initialize(); });
 
-        searchForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const requestId = ++cardRequestId;
-            const isCurrent = () => requestId === cardRequestId;
-            const name = searchInput.value.trim();
-            submitButton.disabled = true;
-            status.textContent = 'Finding card…';
-            try {
-                const selectedCard = await fetchCard(name);
-                if (!isCurrent()) return;
-                if (!selectedCard) {
-                    status.textContent = `No card found for ${name}.`;
-                    return;
-                }
-                const applied = await loadCardImage(scene, selectedCard.image, isCurrent);
-                if (!isCurrent() || !applied) return;
-                status.textContent = 'Przygotowywanie animacji…';
-                await scene.play(revealTypeForCard(selectedCard));
-                if (isCurrent()) status.textContent = '';
-            } catch (error) {
-                console.error('Could not load card.', error);
-                if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';
-            } finally {
-                submitButton.disabled = false;
-            }
-        });
-    } catch (error) {
-        console.error('Could not prepare scene.', error);
-        status.textContent = 'Could not load the scene. Please retry.';
-        submitButton.type = 'button';
-        submitButton.textContent = 'Retry';
-        submitButton.disabled = false;
-        submitButton.addEventListener('click', () => window.location.reload());
-    }
+    searchForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!ready || !scene || destroyed) return;
+        const requestId = ++cardRequestId;
+        const isCurrent = () => !destroyed && requestId === cardRequestId;
+        const name = searchInput.value.trim();
+        if (!name) return;
+        submitButton.disabled = true;
+        status.textContent = 'Finding card…';
+        try {
+            const selectedCard = await fetchCard(name);
+            if (!isCurrent()) return;
+            if (!selectedCard) { status.textContent = `No card found for ${name}.`; return; }
+            const started = performance.now();
+            const applied = await loadCardImage(scene, selectedCard.image, isCurrent);
+            performance.measure('pokemon:card-image', { start: started, end: performance.now() });
+            if (!isCurrent() || !applied) return;
+            await scene.play(revealTypeForCard(selectedCard));
+            if (isCurrent()) status.textContent = '';
+        } catch (error) {
+            console.error('Could not load card.', error);
+            if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';
+        } finally {
+            if (isCurrent()) submitButton.disabled = false;
+        }
+    });
+    window.addEventListener('pagehide', event => {
+        if (event.persisted) return;
+        destroyed = true; cardRequestId++; scene?.dispose();
+    });
+    await initialize();
 }
 
 void start();

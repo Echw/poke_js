@@ -29,7 +29,9 @@ import { GpuTimer } from '../effects/gpuTimer';
 import { SmokeBoundarySampler, SMOKE_OPENING } from '../effects/smokeBoundary';
 import { CARD_REVEAL_TIMING } from '../effects/cardTransformation';
 import { SMOKE_DURATION } from '../effects/smokeTiming';
-import type { PokemonRevealEffect, RevealType } from '../effects/types';
+import { REVEAL_TYPES, type PokemonRevealEffect, type RevealType, type RevealPreparationProgress } from '../effects/types';
+import { cleanSmokeCache } from '../effects/smokeReplay';
+import { CardTextureCache } from './cardTextureCache';
 import { createCardGeometry } from './card';
 
 function loadCardTexture(url: string): Promise<THREE.Texture> {
@@ -56,6 +58,8 @@ function loadCardTexture(url: string): Promise<THREE.Texture> {
 
 export const sceneController = {
     async initScene(canvas: HTMLCanvasElement) {
+        const mobile = window.innerWidth < 700;
+        const cardTextures = new CardTextureCache(loadCardTexture);
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
         const frameCamera = () => {
@@ -83,13 +87,39 @@ export const sceneController = {
         let skyEnvironment: THREE.DataTexture;
         let glb: Awaited<ReturnType<typeof modelLoader.loadAsync>>;
         let backTexture: THREE.Texture;
+        let initializationFailed = false;
+        const initializedAssets: (() => void)[] = [];
+        const releaseModel = (model: Awaited<ReturnType<typeof modelLoader.loadAsync>>) => {
+            const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>(), textures = new Set<THREE.Texture>();
+            model.scene.traverse(object => {
+                if (!(object instanceof THREE.Mesh)) return;
+                geometries.add(object.geometry);
+                for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+                    materials.add(material);
+                    for (const value of Object.values(material)) if (value instanceof THREE.Texture) textures.add(value);
+                }
+            });
+            geometries.forEach(asset => asset.dispose()); materials.forEach(asset => asset.dispose()); textures.forEach(asset => asset.dispose());
+        };
+        const initialAsset = <T>(promise: Promise<T>, release: (asset: T) => void): Promise<T> => new Promise((resolve, reject) => {
+            let timedOut = false;
+            const timeout = window.setTimeout(() => { timedOut = true; reject(new Error('Scene asset timed out')); }, 60000);
+            promise.then(asset => {
+                window.clearTimeout(timeout);
+                if (timedOut || initializationFailed) { release(asset); reject(new Error('Scene initialization cancelled')); return; }
+                initializedAssets.push(() => release(asset)); resolve(asset);
+            }, error => { window.clearTimeout(timeout); reject(error); });
+        });
         try {
             [skyEnvironment, glb, backTexture] = await Promise.all([
-                new EXRLoader().loadAsync(skyEnvironmentUrl),
-                modelLoader.loadAsync(pokeballUrl),
-                textureLoader.loadAsync('/textures/artwork_back.webp'),
+                initialAsset(new EXRLoader().loadAsync(skyEnvironmentUrl), texture => texture.dispose()),
+                initialAsset(modelLoader.loadAsync(pokeballUrl), releaseModel),
+                initialAsset(textureLoader.loadAsync('/textures/artwork_back.webp'), texture => texture.dispose()),
             ]);
         } catch (error) {
+            initializationFailed = true;
+            initializedAssets.forEach(release => release());
+            frameTimer.dispose(); cardTextures.dispose();
             renderer.dispose();
             throw error;
         } finally {
@@ -189,7 +219,7 @@ export const sceneController = {
         const degrees = THREE.MathUtils.degToRad;
         const smokeBoundary = new SmokeBoundarySampler(glb.scene, lid);
 
-        const psychic = new PsychicEffect(card, window.innerWidth < 700);
+        const psychic = new PsychicEffect(card, mobile);
         psychic.root.traverse((object) => { object.renderOrder = 2; });
         glb.scene.add(psychic.root);
         let electric: ElectricEffect | undefined;
@@ -228,6 +258,7 @@ export const sceneController = {
         let activeEffect: PokemonRevealEffect = psychic;
 
         let disposed = false;
+        let preparing = false;
         let cardImageRequest = 0;
         let running = false;
         let playbackWanted = false;
@@ -237,8 +268,9 @@ export const sceneController = {
         const bufferSize = new THREE.Vector2();
         renderer.info.autoReset = false;
         const render = () => {
-            if (disposed || document.hidden) return;
+            if (disposed || (document.hidden && !preparing)) return;
             if (mist instanceof GpuSmokeMist && fogEffect && !mist.hasFrame(timeline.time())) {
+                if (preparing) return; // The startup queue, not playback buffering, owns preparation.
                 if (!buffering) {
                     buffering = true;
                     const desired = timeline.time(), epoch = playbackEpoch;
@@ -352,10 +384,11 @@ export const sceneController = {
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.getDrawingBufferSize(bufferSize);
             depthTarget?.setSize(bufferSize.x, bufferSize.y);
-            if (!running) render();
+            if (!running && !preparing) render();
         };
         window.addEventListener('resize', resize);
         const visibility = () => {
+            if (disposed || preparing) return;
             if (document.hidden) { timeline.pause(); running = false; renderer.setAnimationLoop(null); }
             else {
                 const epoch = playbackEpoch;
@@ -370,7 +403,232 @@ export const sceneController = {
         document.addEventListener('visibilitychange', visibility);
         render();
 
+
+        const preparedReveals = new Set<RevealType>();
+        const preparations = new Map<RevealType, Promise<void>>();
+        const preparationMs: Partial<Record<RevealType, number>> = {};
+        let preparationQueue = Promise.resolve();
+        const selectReveal = (reveal: RevealType) => {
+            timeline.kill();
+            setDragonLook(reveal === 'dragon');
+            if (reveal === 'fairy') setFairyLook();
+            if (reveal === 'normal') {
+                for (const look of originalBallLook) look.mesh.material = look.normal;
+            }
+            if (reveal === 'dark' || reveal === 'steel') setDarkLook();
+            if (reveal === 'electric' && !electric) {
+                electric = new ElectricEffect(card, mobile);
+                electric.root.traverse((object) => { object.renderOrder = 2; });
+                glb.scene.add(electric.root);
+            }
+            if (reveal === 'grass' && !grass) {
+                grass = new GrassEffect(card, mobile);
+                grass.root.traverse((object) => { object.renderOrder = 2; });
+                glb.scene.add(grass.root);
+            }
+            if (reveal === 'bug' && !bug) {
+                bug = new BugEffect(card, mobile);
+                glb.scene.add(bug.root);
+            }
+            if (reveal === 'flying' && !flying) {
+                flying = new FlyingEffect(card, mobile);
+                glb.scene.add(flying.root);
+            }
+            if (reveal === 'dragon' && !dragon) {
+                dragon = new DragonEffect(card, mobile);
+                glb.scene.add(dragon.root);
+            }
+            if (reveal === 'fairy' && !fairy) {
+                fairy = new FairyEffect(card, mobile);
+                glb.scene.add(fairy.root);
+            }
+            if (reveal === 'normal' && !normal) {
+                normal = new NormalEffect(card, mobile);
+                glb.scene.add(normal.root);
+            }
+            if (reveal === 'fire' && !fire) {
+                fire = new FireEffect(card, mobile);
+                fire.root.traverse((object) => { object.renderOrder = 2; });
+                glb.scene.add(fire.root);
+            }
+            if (reveal === 'water' && !water) {
+                water = new WaterEffect(card, skyEnvironment, mobile);
+                glb.scene.add(water.root);
+            }
+            if (reveal === 'ice' && !ice) {
+                ice = new IceEffect(card, skyEnvironment, renderer, mobile);
+                glb.scene.add(ice.root);
+            }
+            if (reveal === 'ghost' && !ghost) {
+                ghost = new GhostEffect(card, mobile);
+                glb.scene.add(ghost.root);
+            }
+            if (reveal === 'dark' && !dark) {
+                dark = new DarkEffect(card, mobile);
+                glb.scene.add(dark.root);
+            }
+            if (reveal === 'steel' && !steel) {
+                steel = new SteelEffect(card, mobile);
+                glb.scene.add(steel.root);
+            }
+            if (reveal === 'poison' && !poison) {
+                poison = new PoisonEffect(card, skyEnvironment, mobile);
+                glb.scene.add(poison.root);
+            }
+            if (reveal === 'ground' && !ground) {
+                ground = new GroundEffect(card, mobile);
+                glb.scene.add(ground.root);
+            }
+            if (reveal === 'rock' && !rock) {
+                rock = new RockEffect(card, mobile);
+                glb.scene.add(rock.root);
+            }
+            if (reveal === 'fighting' && !fighting) {
+                fighting = new FightingEffect(card, mobile);
+                glb.scene.add(fighting.root);
+            }
+            if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost') && !fogVolumes.has(reveal)) {
+                mist = new GpuSmokeMist(renderer,camera,smokeBoundary,mobile,
+                    import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay', reveal, true);
+                fogVolumes.set(reveal, mist);
+            }
+            if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost') && !depthTarget) {
+                // Preserve the root-space opening coordinates while following the actual bottom node.
+                mistSource = new THREE.Object3D();
+                mistSource.name = 'BowlMistSource';
+                glb.scene.add(mistSource);
+                const bowl = glb.scene.getObjectByName('bottom_low001')
+                    ?? glb.scene.getObjectByName('bottom_low001_pokeball_0');
+                if (!bowl) throw new Error('Poké Ball bowl not found in GLB');
+                bowl.attach(mistSource);
+                renderer.getDrawingBufferSize(bufferSize);
+                depthTarget = new THREE.WebGLRenderTarget(bufferSize.x, bufferSize.y, {
+                    depthTexture: new THREE.DepthTexture(bufferSize.x, bufferSize.y),
+                    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+                });
+            }
+            mist?.replay?.deactivate();
+            activeEffect.setActive(false);
+            activeEffect = reveal === 'normal' ? normal! : reveal === 'fairy' ? fairy! : reveal === 'steel' ? steel! : reveal === 'dark' ? dark! : reveal === 'dragon' ? dragon! : reveal === 'rock' ? rock! : reveal === 'bug' ? bug! : reveal === 'flying' ? flying! : reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
+                : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'ground' ? ground! : reveal === 'fighting' ? fighting! : reveal === 'ghost' ? ghost! : reveal === 'poison' ? poison! : psychic;
+            fogEffect = reveal === 'ice' ? ice : reveal === 'ground' ? ground : reveal === 'fighting' ? fighting : reveal === 'ghost' ? ghost : reveal === 'poison' ? poison : undefined;
+            mist = reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? fogVolumes.get(reveal) : undefined;
+            revealFill.color.copy(activeEffect.fillLightColor);
+            revealFill.position.copy(activeEffect.fillLightPosition);
+            activeEffect.setActive(true);
+            activeEffect.reset();
+            glb.scene.rotation.set(0, 0, 0);
+            lid.rotation.x = lidClosedX;
+            card.position.set(0, 0.03, 0.26);
+            card.rotation.set(0, degrees(-70), degrees(-8));
+            card.scale.setScalar(0.26);
+            frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
+            timeline = createTimeline(reveal);
+
+        };
+        /** Prepare one effect once, serializing access to the shared scene and renderer. */
+        const prepareReveal = (reveal: RevealType): Promise<void> => {
+            if (disposed) return Promise.reject(new Error('Scene disposed'));
+            if (preparedReveals.has(reveal)) return Promise.resolve();
+            const existing = preparations.get(reveal);
+            if (existing) return existing;
+            const promise = preparationQueue.then(async () => {
+                if (disposed) throw new Error('Scene disposed');
+                const started = performance.now();
+                preparing = true;
+                playbackWanted = false; running = false; renderer.setAnimationLoop(null);
+                try {
+                    selectReveal(reveal);
+                    await Promise.all([
+                        reveal === 'rock' ? rock!.ready : undefined,
+                        reveal === 'steel' ? steel!.ready : undefined,
+                        reveal === 'ground' ? ground!.ready : undefined,
+                        mist?.prepare(0),
+                    ]);
+                    if (disposed) throw new Error('Scene disposed');
+                    if (mist && fogEffect) {
+                        mist.reset();
+                        if (!preparedFog.has(fogEffect)) {
+                            if (reveal === 'ice') await renderer.compileAsync(ice!.root, camera, scene);
+                            else await renderer.compileAsync(fogEffect.root, camera, scene);
+                            if (disposed) throw new Error('Scene disposed');
+                            await renderer.compileAsync(card, camera, scene);
+                            if (disposed) throw new Error('Scene disposed');
+                            await fogEffect.compileFogDepth(renderer, camera, scene);
+                            if (disposed) throw new Error('Scene disposed');
+                            for (const object of [...occluders, card]) {
+                                if (!(object instanceof THREE.Mesh)) continue;
+                                const material = object.material;
+                                let compiled: Promise<unknown>;
+                                try {
+                                    object.material = Array.isArray(material) ? material.map(depthFor) : depthFor(material);
+                                    compiled = renderer.compileAsync(object, camera, scene);
+                                } finally { object.material = material; }
+                                await compiled;
+                                if (disposed) throw new Error('Scene disposed');
+                            }
+                            await mist.warmup();
+                            if (disposed) throw new Error('Scene disposed');
+                            preparedFog.add(fogEffect);
+                        }
+                    }
+                    if (disposed) throw new Error('Scene disposed');
+
+                    // Warm actual visible states, including transmission/depth buffers and material variants.
+                    for (const time of [0, 1.4, 2.8, 3.5]) {
+                        if (disposed) throw new Error('Scene disposed');
+                        if (mist) await mist.prepare(time);
+                        timeline.time(time, true);
+                        activeEffect.update(time, window.innerHeight);
+                        await renderer.compileAsync(scene, camera);
+                        if (disposed) throw new Error('Scene disposed');
+                        render();
+                        await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+                    }
+                    if (mist) { await mist.prepare(0); mist.reset(); }
+                    if (disposed) throw new Error('Scene disposed');
+                    selectReveal(reveal);
+                    preparationMs[reveal] = performance.now() - started;
+                    preparedReveals.add(reveal);
+                } catch (error) {
+                    // A failed fog initialization must be recreated on Retry; successful effects stay resident.
+                    if (mist && (reveal === 'ice' || reveal === 'ground' || reveal === 'poison' || reveal === 'fighting' || reveal === 'ghost')) {
+                        mist.dispose(); fogVolumes.delete(reveal); mist = undefined;
+                        if (fogEffect) preparedFog.delete(fogEffect);
+                    }
+                    activeEffect.setActive(false);
+                    // Texture-ready promises cannot be retried; rebuild only the failed owner.
+                    if (reveal === 'ground' || reveal === 'rock' || reveal === 'steel') {
+                        activeEffect.root.removeFromParent();
+                        activeEffect.dispose();
+                        if (reveal === 'ground') { ground = undefined; fogEffect = undefined; }
+                        if (reveal === 'rock') rock = undefined;
+                        if (reveal === 'steel') steel = undefined;
+                        activeEffect = psychic;
+                    }
+                    throw error;
+                } finally {
+                    preparing = false;
+                    preparations.delete(reveal);
+                }
+            });
+            preparations.set(reveal, promise);
+            preparationQueue = promise.catch(() => {});
+            return promise;
+        };
+        /** Startup barrier: all effects are initialized before the search form is enabled. */
+        const prepareAllReveals = async (onProgress?: (progress: RevealPreparationProgress) => void) => {
+            for (const type of REVEAL_TYPES) {
+                await prepareReveal(type);
+                onProgress?.({ completed: preparedReveals.size, total: REVEAL_TYPES.length, type });
+                await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+            }
+            await cleanSmokeCache();
+        };
+
         return {
+            prepareReveal,
+            prepareAllReveals,
             // Used by the development preview only; no debug handles in production.
             debug: import.meta.env.DEV ? {
                 async seek(time: number) {
@@ -396,9 +654,10 @@ export const sceneController = {
                 },
                 snapshot() {
                     return {
+                        prepared: [...preparedReveals], preparationMs: { ...preparationMs }, cardCache: cardTextures.snapshot(), mobile,
                         time: timeline.time(), duration: timeline.duration(), running, disposed, buffering,
                         effect: activeEffect.root.name,
-                        memory: { ...renderer.info.memory }, calls: renderer.info.render.calls,
+                        memory: { ...renderer.info.memory }, contextLost: renderer.getContext().isContextLost(), calls: renderer.info.render.calls,
                         programs: renderer.info.programs?.length ?? 0,
                         cardScale: card.scale.x,
                         frameGpu: frameTimer.stats(),
@@ -450,182 +709,35 @@ export const sceneController = {
             } : undefined,
             async setCardImage(image: string) {
                 const request = ++cardImageRequest;
-                const texture = await loadCardTexture(image);
-                if (disposed || request !== cardImageRequest) { texture.dispose(); return false; }
-                texture.colorSpace = THREE.SRGBColorSpace;
-                if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
-                frontMaterial.map = texture;
-                frontMaterial.needsUpdate = true;
-                if (!running) render();
-                return true;
+                const lease = await cardTextures.acquire(image);
+                try {
+                    if (disposed || request !== cardImageRequest) return false;
+                    const texture = lease.texture;
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                    renderer.initTexture(texture);
+                    frontMaterial.map = texture;
+                    cardTextures.pin(texture);
+                    frontMaterial.needsUpdate = true;
+                    if (!running) render();
+                    return true;
+                } finally { lease.release(); }
             },
             async play(reveal: RevealType = 'psychic') {
                 if (disposed) return;
                 const epoch = ++playbackEpoch;
                 playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
                 timeline.kill();
-                setDragonLook(reveal === 'dragon');
-                if (reveal === 'fairy') setFairyLook();
-                if (reveal === 'normal') {
-                    for (const look of originalBallLook) look.mesh.material = look.normal;
-                }
-                if (reveal === 'dark' || reveal === 'steel') setDarkLook();
-                if (reveal === 'electric' && !electric) {
-                    electric = new ElectricEffect(card, window.innerWidth < 700);
-                    electric.root.traverse((object) => { object.renderOrder = 2; });
-                    glb.scene.add(electric.root);
-                }
-                if (reveal === 'grass' && !grass) {
-                    grass = new GrassEffect(card, window.innerWidth < 700);
-                    grass.root.traverse((object) => { object.renderOrder = 2; });
-                    glb.scene.add(grass.root);
-                }
-                if (reveal === 'bug' && !bug) {
-                    bug = new BugEffect(card, window.innerWidth < 700);
-                    glb.scene.add(bug.root);
-                }
-                if (reveal === 'flying' && !flying) {
-                    flying = new FlyingEffect(card, window.innerWidth < 700);
-                    glb.scene.add(flying.root);
-                }
-                if (reveal === 'dragon' && !dragon) {
-                    dragon = new DragonEffect(card, window.innerWidth < 700);
-                    glb.scene.add(dragon.root);
-                }
-                if (reveal === 'fairy' && !fairy) {
-                    fairy = new FairyEffect(card, window.innerWidth < 700);
-                    glb.scene.add(fairy.root);
-                }
-                if (reveal === 'normal' && !normal) {
-                    normal = new NormalEffect(card, window.innerWidth < 700);
-                    glb.scene.add(normal.root);
-                }
-                if (reveal === 'fire' && !fire) {
-                    fire = new FireEffect(card, window.innerWidth < 700);
-                    fire.root.traverse((object) => { object.renderOrder = 2; });
-                    glb.scene.add(fire.root);
-                }
-                if (reveal === 'water' && !water) {
-                    water = new WaterEffect(card, skyEnvironment, window.innerWidth < 700);
-                    glb.scene.add(water.root);
-                }
-                if (reveal === 'ice' && !ice) {
-                    ice = new IceEffect(card, skyEnvironment, renderer, window.innerWidth < 700);
-                    glb.scene.add(ice.root);
-                }
-                if (reveal === 'ghost' && !ghost) {
-                    ghost = new GhostEffect(card, window.innerWidth < 700);
-                    glb.scene.add(ghost.root);
-                }
-                if (reveal === 'dark' && !dark) {
-                    dark = new DarkEffect(card, window.innerWidth < 700);
-                    glb.scene.add(dark.root);
-                }
-                if (reveal === 'steel' && !steel) {
-                    steel = new SteelEffect(card, window.innerWidth < 700);
-                    glb.scene.add(steel.root);
-                }
-                if (reveal === 'poison' && !poison) {
-                    poison = new PoisonEffect(card, skyEnvironment, window.innerWidth < 700);
-                    glb.scene.add(poison.root);
-                }
-                if (reveal === 'ground' && !ground) {
-                    ground = new GroundEffect(card, window.innerWidth < 700);
-                    glb.scene.add(ground.root);
-                }
-                if (reveal === 'rock' && !rock) {
-                    rock = new RockEffect(card, window.innerWidth < 700);
-                    glb.scene.add(rock.root);
-                }
-                if (reveal === 'fighting' && !fighting) {
-                    fighting = new FightingEffect(card, window.innerWidth < 700);
-                    glb.scene.add(fighting.root);
-                }
-                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost') && !fogVolumes.has(reveal)) {
-                    mist = new GpuSmokeMist(renderer,camera,smokeBoundary,window.innerWidth<700,
-                        import.meta.env.DEV && new URLSearchParams(location.search).get('smokeSource') === 'live' ? 'live' : 'replay', reveal);
-                    fogVolumes.set(reveal, mist);
-                }
-                if ((reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost') && !depthTarget) {
-                    // Preserve the root-space opening coordinates while following the actual bottom node.
-                    mistSource = new THREE.Object3D();
-                    mistSource.name = 'BowlMistSource';
-                    glb.scene.add(mistSource);
-                    const bowl = glb.scene.getObjectByName('bottom_low001')
-                        ?? glb.scene.getObjectByName('bottom_low001_pokeball_0');
-                    if (!bowl) throw new Error('Poké Ball bowl not found in GLB');
-                    bowl.attach(mistSource);
-                    renderer.getDrawingBufferSize(bufferSize);
-                    depthTarget = new THREE.WebGLRenderTarget(bufferSize.x, bufferSize.y, {
-                        depthTexture: new THREE.DepthTexture(bufferSize.x, bufferSize.y),
-                        minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
-                    });
-                }
-                activeEffect.setActive(false);
-                activeEffect = reveal === 'normal' ? normal! : reveal === 'fairy' ? fairy! : reveal === 'steel' ? steel! : reveal === 'dark' ? dark! : reveal === 'dragon' ? dragon! : reveal === 'rock' ? rock! : reveal === 'bug' ? bug! : reveal === 'flying' ? flying! : reveal === 'electric' ? electric! : reveal === 'grass' ? grass!
-                    : reveal === 'fire' ? fire! : reveal === 'water' ? water! : reveal === 'ice' ? ice! : reveal === 'ground' ? ground! : reveal === 'fighting' ? fighting! : reveal === 'ghost' ? ghost! : reveal === 'poison' ? poison! : psychic;
-                fogEffect = reveal === 'ice' ? ice : reveal === 'ground' ? ground : reveal === 'fighting' ? fighting : reveal === 'ghost' ? ghost : reveal === 'poison' ? poison : undefined;
-                mist = reveal === 'ice' || reveal === 'fighting' || reveal === 'ground' || reveal === 'poison' || reveal === 'ghost' ? fogVolumes.get(reveal) : undefined;
-                revealFill.color.copy(activeEffect.fillLightColor);
-                revealFill.position.copy(activeEffect.fillLightPosition);
-                activeEffect.setActive(true);
-                activeEffect.reset();
-                glb.scene.rotation.set(0, 0, 0);
-                lid.rotation.x = lidClosedX;
-                card.position.set(0, 0.03, 0.26);
-                card.rotation.set(0, degrees(-70), degrees(-8));
-                card.scale.setScalar(0.26);
-                frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
-                timeline = createTimeline(reveal);
-                if (reveal === 'rock') {
-                    await rock!.ready;
-                    if (disposed || epoch !== playbackEpoch) return;
-                }
-                if (reveal === 'steel') {
-                    await steel!.ready;
-                    if (disposed || epoch !== playbackEpoch) return;
-                }
-                if (mist && fogEffect) {
-                    if (reveal === 'ground') {
-                        await ground!.ready;
-                        if (disposed || epoch !== playbackEpoch) return;
-                    }
-                    await mist.prepare(0);
-                    if (disposed || epoch !== playbackEpoch) return;
-                    mist.reset();
-                    if (!preparedFog.has(fogEffect)) {
-                        if (reveal === 'ice') await renderer.compileAsync(ice!.root, camera, scene);
-                        else await renderer.compileAsync(fogEffect.root, camera, scene);
-                        if (disposed || epoch !== playbackEpoch) return;
-                        await renderer.compileAsync(card, camera, scene);
-                        if (disposed || epoch !== playbackEpoch) return;
-                        await fogEffect.compileFogDepth(renderer, camera, scene);
-                        if (disposed || epoch !== playbackEpoch) return;
-                        for (const object of [...occluders, card]) {
-                            if (!(object instanceof THREE.Mesh)) continue;
-                            const material = object.material;
-                            let compiled: Promise<unknown>;
-                            try {
-                                object.material = Array.isArray(material) ? material.map(depthFor) : depthFor(material);
-                                compiled = renderer.compileAsync(object, camera, scene);
-                            } finally { object.material = material; }
-                            await compiled;
-                            if (disposed || epoch !== playbackEpoch) return;
-                        }
-                        await mist.warmup();
-                        if (disposed || epoch !== playbackEpoch) return;
-                        preparedFog.add(fogEffect);
-                    }
-                }
+                await prepareReveal(reveal);
+                if (disposed || epoch !== playbackEpoch) return;
+                selectReveal(reveal);
+                if (mist) { await mist.prepare(0); mist.reset(); }
                 if (disposed || epoch !== playbackEpoch) return;
                 lastShownTime = 0;
                 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                    if (reveal === 'ground' || reveal === 'ghost') {
-                        // Prepare the final fog frame before buffering can rewind the timeline.
-                        if (mist) await mist.prepare(timeline.duration());
-                        if (disposed || epoch !== playbackEpoch) return;
-                        timeline.progress(1, true);
-                    } else timeline.progress(1);
+                    // Every fog variant needs the final frame before a render can advance there.
+                    if (mist) await mist.prepare(timeline.duration());
+                    if (disposed || epoch !== playbackEpoch) return;
+                    timeline.progress(1, true);
                     finishRender();
                 } else {
                     playbackWanted = true;
@@ -649,6 +761,14 @@ export const sceneController = {
                 renderer.setAnimationLoop(null);
                 window.removeEventListener('resize', resize);
                 document.removeEventListener('visibilitychange', visibility);
+                // Sprites share a Three.js quad; release it only when the whole scene is destroyed.
+                const spriteGeometries = new Set<THREE.BufferGeometry>();
+                glb.scene.traverse(object => {
+                    if (object instanceof THREE.Sprite) spriteGeometries.add(object.geometry);
+                    if (object instanceof THREE.InstancedMesh) object.dispose();
+                });
+                spriteGeometries.forEach(geometry => geometry.dispose());
+                preparations.clear(); preparedReveals.clear();
                 psychic.dispose();
                 electric?.dispose();
                 grass?.dispose();
@@ -671,7 +791,7 @@ export const sceneController = {
                 depthTarget?.dispose();
                 depthMaterials.forEach(material => material.dispose());
                 card.geometry.dispose();
-                if (frontMaterial.map !== backTexture) frontMaterial.map?.dispose();
+                cardTextures.dispose();
                 backTexture.dispose();
                 frontMaterial.dispose();
                 backMaterial.dispose();

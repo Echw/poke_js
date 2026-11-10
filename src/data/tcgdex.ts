@@ -17,7 +17,37 @@ function isCardDetail(value: unknown): value is CardDetail {
         && (!('types' in value) || (Array.isArray(value.types) && value.types.every((type) => typeof type === 'string')));
 }
 
+const selections = new Map<string, { card: CardSelection; expires: number }>();
+const pendingSelections = new Map<string, Promise<CardSelection | undefined>>();
+
+/** Cache successful queries for 30 minutes; failed/empty responses remain retryable. */
 export async function fetchCard(name?: string): Promise<CardSelection | undefined> {
+    const key = name?.trim().toLowerCase() || '__initial_abra__';
+    const cached = selections.get(key);
+    if (cached && cached.expires > Date.now()) {
+        selections.delete(key); selections.set(key, cached);
+        return cached.card;
+    }
+    selections.delete(key);
+    const pending = pendingSelections.get(key);
+    if (pending) return pending;
+    const started = performance.now();
+    const request = fetchUncachedCard(name).then(card => {
+        if (card) {
+            selections.set(key, { card, expires: Date.now() + 30 * 60 * 1000 });
+            while (selections.size > 50) selections.delete(selections.keys().next().value!);
+        }
+        return card;
+    });
+    pendingSelections.set(key, request);
+    try { return await request; }
+    finally {
+        pendingSelections.delete(key);
+        performance.measure('pokemon:api', { start: started, end: performance.now() });
+    }
+}
+
+async function fetchUncachedCard(name?: string): Promise<CardSelection | undefined> {
     const query = name?.trim();
 
     const controller = new AbortController();

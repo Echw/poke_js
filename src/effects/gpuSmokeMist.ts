@@ -40,6 +40,7 @@ export class GpuSmokeMist {
     private field: SmokeField;
     private placeholder: THREE.DataTexture;
     private renderer: THREE.WebGLRenderer;
+    private readonly strictReplay: boolean;
     private camera: THREE.Camera;
     private boundary: SmokeBoundarySampler;
     private mobile: boolean;
@@ -62,8 +63,10 @@ export class GpuSmokeMist {
         mobile = false,
         source: 'live' | 'replay' = 'replay',
         variant: SmokeVariant | 'ghost' = 'ice',
+        strictReplay = false,
     ) {
         this.variant = variant;
+        this.strictReplay = strictReplay;
         this.sourceVariant = variant === 'ghost' ? 'fighting' : variant;
         const profile = smokeProfile(this.sourceVariant);
         Object.assign(this.settings, profile.preset);
@@ -174,6 +177,7 @@ export class GpuSmokeMist {
                 replay?.dispose();
                 if (this.disposed || epoch !== this.sourceEpoch) return;
                 this.replay = undefined; this.fallbackReason = String(error);
+                if (this.strictReplay) throw error;
                 console.warn('Smoke replay unavailable; retaining full-quality live simulation.', error);
             }
         }
@@ -192,6 +196,7 @@ export class GpuSmokeMist {
         try { await this.replay?.prepare(time); }
         catch (error) {
             if (this.disposed || epoch !== this.sourceEpoch) return;
+            if (this.strictReplay) throw error;
             await this.setSource('live');
             this.fallbackReason = String(error);
         }

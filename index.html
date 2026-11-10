@@ -9,9 +9,18 @@
 </head>
 
 <body>
+  <section id="startup-loader" class="startup-loader" role="status" aria-live="polite"
+    style="position:fixed;inset:0;z-index:10;display:grid;place-content:center;background:#0c0916;color:#f7f2ff;text-align:center;padding:24px">
+    <div class="startup-loader__ball" aria-hidden="true"></div>
+    <h1>Przygotuj się na odkrywanie</h1>
+    <p id="startup-message">Pobieranie zasobów…</p>
+    <progress id="startup-progress" max="18" aria-label="Przygotowanie animacji"></progress>
+    <p class="startup-loader__hint">Przy pierwszej wizycie zajmie to chwilę.<br>Przygotowujemy wszystkie efekty Pokémonów.</p>
+    <button id="startup-retry" class="startup-loader__retry" type="button" hidden>Ponów próbę</button>
+  </section>
   <main id="app">
     <canvas id="canvas"></canvas>
-    <form id="pokemon-search" class="summon-form" role="search">
+    <form id="pokemon-search" class="summon-form" role="search" inert aria-busy="true">
       <label class="visually-hidden" for="pokemon-name">Pokémon name</label>
       <input
         id="pokemon-name"
