@@ -171,15 +171,16 @@ try {
         assert.equal(noCache.requests.length, 4);
         await noCache.context.close(); report.scenarios.push('storage unavailable');
     } else {
-        // Independent external API failure must not hold the effect readiness barrier.
+        // Ordinary startup does not use the card API, even when it is unavailable.
         const missingCard = await open(600);
         await ready(missingCard.page);
         await missingCard.page.unroute('https://api.tcgdex.net/**');
         await missingCard.page.route('https://api.tcgdex.net/**', route => route.abort());
         await missingCard.page.goto(base); await ready(missingCard.page);
         assert.equal(await missingCard.page.locator('#pokemon-search').evaluate(form => form.inert), false);
-        assert.match(await missingCard.page.locator('#summon-status').textContent(), /Could not load/);
-        await missingCard.context.close(); report.scenarios.push('initial API failure does not block search');
+        assert.equal(await missingCard.page.locator('#summon-status').textContent(), '');
+        assert.equal(await missingCard.page.evaluate(() => window.__pokemonReveal.debug.snapshot().idle), true);
+        await missingCard.context.close(); report.scenarios.push('idle startup does not depend on card API');
     }
     assert.deepEqual(report.errors, []);
     report.passed = true;

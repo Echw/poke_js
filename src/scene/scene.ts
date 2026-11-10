@@ -259,6 +259,7 @@ export const sceneController = {
 
         let disposed = false;
         let preparing = false;
+        let idle = false;
         let cardImageRequest = 0;
         let running = false;
         let playbackWanted = false;
@@ -269,6 +270,13 @@ export const sceneController = {
         renderer.info.autoReset = false;
         const render = () => {
             if (disposed || (document.hidden && !preparing)) return;
+            if (idle) {
+                card.visible = false;
+                renderer.info.reset();
+                renderedFrames++;
+                renderer.render(scene, camera);
+                return;
+            }
             if (mist instanceof GpuSmokeMist && fogEffect && !mist.hasFrame(timeline.time())) {
                 if (preparing) return; // The startup queue, not playback buffering, owns preparation.
                 if (!buffering) {
@@ -409,6 +417,7 @@ export const sceneController = {
         const preparationMs: Partial<Record<RevealType, number>> = {};
         let preparationQueue = Promise.resolve();
         const selectReveal = (reveal: RevealType) => {
+            idle = false;
             timeline.kill();
             setDragonLook(reveal === 'dragon');
             if (reveal === 'fairy') setFairyLook();
@@ -629,10 +638,31 @@ export const sceneController = {
         return {
             prepareReveal,
             prepareAllReveals,
+            /** Show the closed, empty ball after preparation, retaining all warmed resources. */
+            showIdle() {
+                if (disposed) return;
+                playbackEpoch++; cardImageRequest++;
+                playbackWanted = false; buffering = false; running = false;
+                renderer.setAnimationLoop(null);
+                timeline.pause(0, true); timeline.kill();
+                for (const effect of [psychic, electric, grass, fire, water, ice, fighting, poison, ground,
+                    flying, bug, rock, ghost, dragon, dark, steel, fairy, normal]) effect?.setActive(false);
+                fogVolumes.forEach(volume => { volume.mesh.visible = false; volume.replay?.deactivate(); });
+                mist = undefined; fogEffect = undefined;
+                setDragonLook(false);
+                glb.scene.rotation.set(0, 0, 0);
+                lid.rotation.x = lidClosedX;
+                frontMaterial.opacity = backMaterial.opacity = edgeMaterial.opacity = 0;
+                card.visible = false;
+                revealFill.intensity = 0;
+                lastShownTime = 0;
+                idle = true;
+                render();
+            },
             // Used by the development preview only; no debug handles in production.
             debug: import.meta.env.DEV ? {
                 async seek(time: number) {
-                    if (disposed || !Number.isFinite(time)) return;
+                    if (disposed || idle || !Number.isFinite(time)) return;
                     const epoch = ++playbackEpoch;
                     playbackWanted = false; buffering = false; running = false; renderer.setAnimationLoop(null);
                     timeline.pause();
@@ -646,7 +676,7 @@ export const sceneController = {
                 },
                 /** Resume the development preview, optionally in slow motion. */
                 resume(rate = 1) {
-                    if (disposed || !Number.isFinite(rate) || rate <= 0 || timeline.time() >= timeline.duration()) return;
+                    if (disposed || idle || !Number.isFinite(rate) || rate <= 0 || timeline.time() >= timeline.duration()) return;
                     playbackWanted = true;
                     if (document.hidden || buffering) return;
                     timeline.timeScale(rate).play();
@@ -656,7 +686,9 @@ export const sceneController = {
                     return {
                         prepared: [...preparedReveals], preparationMs: { ...preparationMs }, cardCache: cardTextures.snapshot(), mobile,
                         time: timeline.time(), duration: timeline.duration(), running, disposed, buffering,
-                        effect: activeEffect.root.name,
+                        effect: idle ? 'idle' : activeEffect.root.name,
+                        idle, cardVisible: card.visible, lidAngle: lid.rotation.x - lidClosedX,
+                        revealLight: revealFill.intensity,
                         memory: { ...renderer.info.memory }, contextLost: renderer.getContext().isContextLost(), calls: renderer.info.render.calls,
                         programs: renderer.info.programs?.length ?? 0,
                         cardScale: card.scale.x,

@@ -34,7 +34,9 @@ async function start() {
 
     let cardRequestId = 0;
     const initialCard = (
-        previewReveal === 'normal'
+        !previewReveal
+            ? Promise.resolve(undefined)
+            : previewReveal === 'normal'
             ? Promise.resolve({ name: 'Eevee', image: '/textures/eevee-preview.webp', types: ['Colorless'], dexId: [133] })
             : previewReveal === 'fairy'
             ? Promise.resolve({ name: 'Sylveon', image: '/textures/sylveon-preview.webp', types: ['Fairy'], dexId: [700] })
@@ -108,14 +110,14 @@ async function start() {
             }
             if (destroyed) return;
             if (imageReady) await scene.play(previewReveal);
-            else scene.stop();
+            else scene.showIdle();
             if (destroyed) return;
             loaderMessage.textContent = 'Gotowe';
             ready = true;
             searchForm.inert = false;
             searchForm.setAttribute('aria-busy', 'false');
             submitButton.disabled = false;
-            status.textContent = imageReady ? '' : `Could not load ${initialName}. Search to try again.`;
+            status.textContent = !previewReveal || imageReady ? '' : `Could not load ${initialName}. Search to try again.`;
             loader.hidden = true;
         } catch (error) {
             console.error('Could not prepare scene.', error);

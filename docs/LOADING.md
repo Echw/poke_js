@@ -2,7 +2,9 @@
 
 The HTML loader is visible before JavaScript. Search remains inert until `prepareAllReveals()` has prepared all 18 types. Each type is prepared once through a shared promise and a serial GPU queue. `play()` uses the same preparation barrier, then resets the existing effect and timeline. The device profile is fixed at scene creation (`innerWidth < 700`); resize only reframes/resizes rendering.
 
-Preparation awaits effect textures and replay data, reuses fog depth compilation and `GpuSmokeMist.warmup()`, and renders representative states at 0, 1.4, 2.8 and 3.5 seconds behind the loader. Initial card lookup runs concurrently. A failed initial card does not block search. A failed effect leaves the loader visible with Retry; successful preparation remains resident. Startup uses strict replay errors instead of silently replacing failed downloads with costly live simulation. Explicit development authoring still supports the live solver.
+Preparation awaits effect textures and replay data, reuses fog depth compilation and `GpuSmokeMist.warmup()`, and renders representative states at 0, 1.4, 2.8 and 3.5 seconds behind the loader. After preparation, ordinary startup calls `scene.showIdle()` before hiding the loader: the ball is closed, card and effects are hidden, reveal lighting is off and the render loop is stopped. No default card is requested. A failed effect leaves the loader visible with Retry; successful preparation remains resident. Startup uses strict replay errors instead of silently replacing failed downloads with costly live simulation. Explicit development authoring still supports the live solver.
+
+`showIdle()` retains warmed effects, replay data and card caches, resets the ball's pose/materials, and renders one static frame. Resize, visibility restoration and card texture loading respect idle state. Only a successful search with a loaded card image calls `play(type)` and starts the reveal; failed searches leave the closed ball unchanged. Later searches keep the existing behavior. Explicit development `?reveal=...` previews still load their fixture and autoplay; a failed preview card falls back to idle with a status message.
 
 ## Ownership and memory
 
@@ -25,8 +27,11 @@ Run `node scripts/verify-loading.mjs` with Vite on 5173, and `node scripts/verif
 
 Development snapshots expose preparation durations and cache counters through the existing debug handle. Performance entries `pokemon:api` and `pokemon:card-image` separate external request time from effect preparation. Timing comparisons must identify browser/GPU/cache conditions; do not interpret a local shader-cache run as a first-visit network benchmark.
 
+Run `node scripts/verify-idle.mjs` (Vite 5173) and `node scripts/verify-idle.mjs --production` (preview 5175) for the closed-ball entry flow. It covers desktop/mobile, reduced motion, no startup card requests, failed and successful searches, delayed card images, resize/visibility, static rendering and reuse of prepared effects. `IDLE_QA_URL` / `IDLE_QA_DIR` override URL and output.
+
 ### Verified in this change
 
+- Closed-ball startup passed in development and production at 1280×800 and 600×800, with normal and reduced motion: zero startup card requests, static idle rendering, failed searches, delayed images, resize/visibility, original-look restoration and successful Normal/Fighting searches. Desktop/mobile idle and reveal screenshots were visually inspected.
 - TypeScript and production Vite build passed (the existing large-bundle warning remains).
 - Loading integration passed in development and production at 1280×800 and 600×800: all eighteen types, pinned restart data, no new shader programs on selection, exact sampled source frames, fifty searches per profile, resize, visibility pause/resume, superseded selection and cleanup.
 - Production tests passed for four initial clip requests, zero on reload, one replacement request for a corrupted entry, obsolete-entry cleanup, unavailable storage, failed download/retry and reduced motion. Initial API failure leaves search usable.
