@@ -2,6 +2,7 @@ import './styles/main.scss';
 import { sceneController } from './scene/scene';
 import { fetchCard } from './data/tcgdex';
 import { revealTypeForCard } from './data/revealType';
+import type { RevealType } from './effects/types';
 
 type Scene = Awaited<ReturnType<typeof sceneController.initScene>>;
 
@@ -28,7 +29,9 @@ async function start() {
     const searchForm = document.querySelector<HTMLFormElement>('#pokemon-search');
     const searchInput = document.querySelector<HTMLInputElement>('#pokemon-name');
     const status = document.querySelector<HTMLOutputElement>('#summon-status');
-    if (!canvas || !searchForm || !searchInput || !status) throw new Error('Page elements not found');
+    const searchPanel = document.querySelector<HTMLDivElement>('#summon-panel');
+    const searchAgain = document.querySelector<HTMLButtonElement>('#search-again');
+    if (!canvas || !searchForm || !searchInput || !status || !searchPanel || !searchAgain) throw new Error('Page elements not found');
     const submitButton = searchForm.querySelector<HTMLButtonElement>('button');
     if (!submitButton) throw new Error('Summon button not found');
 
@@ -83,6 +86,47 @@ async function start() {
     let ready = false;
     let destroyed = false;
     let searching = false;
+    let lastReveal: RevealType | undefined;
+    let view: 'search' | 'loading' | 'revealing' | 'presented' = 'search';
+
+    const setView = (next: typeof view) => {
+        view = next;
+        searchPanel.hidden = next === 'revealing' || next === 'presented';
+        searchForm.hidden = next !== 'search';
+        searchForm.inert = !ready || next !== 'search';
+        searchForm.setAttribute('aria-busy', String(!ready || next === 'loading' || next === 'revealing'));
+        submitButton.disabled = !ready || next !== 'search';
+        searchAgain.hidden = next !== 'presented';
+        scene?.setReplayAvailable(ready && lastReveal !== undefined && (next === 'search' || next === 'presented'));
+    };
+
+    const presentCard = async (reveal: RevealType): Promise<boolean> => {
+        if (!scene || destroyed) return false;
+        status.textContent = '';
+        setView('revealing');
+        const result = await scene.play(reveal);
+        if (destroyed || result !== 'completed') return false;
+        setView('presented');
+        searchAgain.focus({ preventScroll: true });
+        return true;
+    };
+
+    const replayCard = async () => {
+        if (!ready || !scene || destroyed || searching || !lastReveal) return;
+        searching = true;
+        let completed = false;
+        try { completed = await presentCard(lastReveal); }
+        catch (error) {
+            console.error('Could not replay card.', error);
+            status.textContent = 'Could not replay that card. Please try again.';
+        } finally {
+            searching = false;
+            if (!destroyed && !completed) {
+                scene.showIdle({ ballVisible: false });
+                setView('search');
+            }
+        }
+    };
 
     const initialize = async () => {
         if (initializing || ready || destroyed) return;
@@ -90,7 +134,7 @@ async function start() {
         retry.hidden = true;
         loaderMessage.textContent = scene ? 'Przygotowywanie animacji…' : 'Pobieranie zasobów…';
         try {
-            scene ??= await sceneController.initScene(canvas);
+            scene ??= await sceneController.initScene(canvas, { onReplay: () => { void replayCard(); } });
             if (destroyed) { scene.dispose(); return; }
             await scene.prepareAllReveals(({ completed, total }) => {
                 progress.max = total;
@@ -98,6 +142,7 @@ async function start() {
                 loaderMessage.textContent = `Przygotowywanie animacji ${completed}/${total}`;
             });
             if (destroyed) return;
+            scene.showIdle({ ballVisible: false });
             if (import.meta.env.DEV) Object.assign(window, { __pokemonReveal: scene });
             const selectedCard = await initialCard;
             let imageReady = false;
@@ -110,22 +155,20 @@ async function start() {
                 } catch (error) { console.warn('Could not load initial card image.', error); }
             }
             if (destroyed) return;
-            if (!imageReady) scene.showIdle();
-            if (destroyed) return;
             loaderMessage.textContent = 'Gotowe';
             ready = true;
-            searchForm.inert = false;
-            searchForm.setAttribute('aria-busy', 'false');
-            submitButton.disabled = false;
+            setView(imageReady ? 'revealing' : 'search');
             status.textContent = !previewReveal || imageReady ? '' : `Could not load ${initialName}. Search to try again.`;
             loader.hidden = !(imageReady && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
             if (imageReady) {
+                lastReveal = previewReveal!;
                 searching = true;
-                submitButton.disabled = true;
-                try { await scene.play(previewReveal); }
+                try {
+                    if (!await presentCard(lastReveal) && !destroyed) setView('search');
+                }
                 finally {
                     searching = false;
-                    if (!destroyed) { submitButton.disabled = false; loader.hidden = true; }
+                    if (!destroyed) loader.hidden = true;
                 }
             }
         } catch (error) {
@@ -138,13 +181,15 @@ async function start() {
 
     searchForm.addEventListener('submit', async event => {
         event.preventDefault();
-        if (!ready || !scene || destroyed || searching) return;
+        if (!ready || !scene || destroyed || searching || view !== 'search') return;
         const name = searchInput.value.trim();
         if (!name) return;
         const requestId = ++cardRequestId;
         const isCurrent = () => !destroyed && requestId === cardRequestId;
+        let completed = false;
         searching = true;
-        submitButton.disabled = true;
+        searchInput.blur();
+        setView('loading');
         status.textContent = 'Finding card…';
         try {
             const selectedCard = await fetchCard(name);
@@ -154,15 +199,29 @@ async function start() {
             const applied = await loadCardImage(scene, selectedCard.image, isCurrent);
             performance.measure('pokemon:card-image', { start: started, end: performance.now() });
             if (!isCurrent() || !applied) return;
-            status.textContent = '';
-            await scene.play(revealTypeForCard(selectedCard));
-            if (isCurrent()) status.textContent = '';
+            lastReveal = revealTypeForCard(selectedCard);
+            completed = await presentCard(lastReveal);
         } catch (error) {
             console.error('Could not load card.', error);
             if (isCurrent()) status.textContent = 'Could not load that card. Please try again.';
         } finally {
-            if (isCurrent()) { searching = false; submitButton.disabled = false; }
+            if (isCurrent()) {
+                searching = false;
+                if (!completed) {
+                    scene.showIdle({ ballVisible: false });
+                    setView('search');
+                    searchInput.focus({ preventScroll: true });
+                }
+            }
         }
+    });
+    searchAgain.addEventListener('click', () => {
+        if (!ready || !scene || destroyed || searching || view !== 'presented') return;
+        scene.showIdle({ ballVisible: false });
+        searchInput.value = '';
+        status.textContent = '';
+        setView('search');
+        searchInput.focus({ preventScroll: true });
     });
     window.addEventListener('pagehide', event => {
         if (event.persisted) return;

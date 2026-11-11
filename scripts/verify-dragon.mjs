@@ -112,7 +112,7 @@ try {
             stages.push(await state(page));
         }
         assert.equal(stages[2].effect, 'DragonEffect');
-        assert.equal(stages[5].cardScale, 0.94);
+        assert.equal(stages[5].cardScale, 1.18);
         assert.equal(stages[5].running, false);
         const fit = await page.evaluate(() => {
             const r = document.querySelector('#pokemon-search').getBoundingClientRect();

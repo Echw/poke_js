@@ -95,7 +95,7 @@ try {
         const illustration = await difference(page, imageOn, await page.screenshot({ scale: 'css' }), cardRegion);
         assert.equal(illustration.changed, 0, 'No smoke layer covers the revealed illustration center');
         await setCurrents(page, true);
-        await seek(page, 3.5); assert.equal((await state(page)).cardScale, 0.94);
+        await seek(page, 3.5); assert.equal((await state(page)).cardScale, 1.18);
 
         const rotation = await page.evaluate(() => window.__pokemonReveal.debug.card.rotation.toArray().slice(0, 3));
         assert.ok(Math.abs(rotation[1]) < 1e-5 && Math.abs(rotation[2]) < 1e-5, 'Shared final rotation is preserved');

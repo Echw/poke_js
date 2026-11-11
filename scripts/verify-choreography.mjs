@@ -11,6 +11,7 @@ const browser = await launch();
 const report = { profiles: [], assertions: [], errors: [] };
 const types = ['psychic','electric','grass','fire','water','ice','fighting','poison','ground','flying','bug','rock','ghost','dragon','dark','steel','fairy','normal'];
 const selectedTypes = process.env.CHOREOGRAPHY_TYPES?.split(',') || types;
+const modes = process.env.CHOREOGRAPHY_MODES?.split(',') || ['after', 'during'];
 const snapshot = page => page.evaluate(() => window.__pokemonReveal.debug.snapshot());
 const near = (a, b, message) => assert.ok(a.every((v, i) => Math.abs(v - b[i]) < 1e-7), message);
 const ready = page => page.waitForFunction(() => window.__pokemonReveal && document.querySelector('#startup-loader').hidden, null, { timeout: 120000 });
@@ -38,17 +39,21 @@ async function run(page, type, extension = 0) {
     assert.ok(reveal.length > 2 && falling.length > 1, `${type}: sampled reveal and drop`);
     for (const frame of reveal) {
         near(frame.ballMatrix, reveal[0].ballMatrix, `${type}: stationary open shell throughout reveal`);
-        assert.ok(Math.abs(frame.lidAngle + Math.PI / 4) < 1e-7);
+        const opening = 45 + 65 * (1 - (1 - frame.presentationProgress) ** 3);
+        assert.ok(Math.abs(frame.lidAngle + opening * Math.PI / 180) < 1e-6);
     }
+    assert.equal(samples.some(s => s.phase === 'focus'), end.presentationMode === 'after', 'Only after mode adds a focus phase');
     for (const frame of falling) {
         assert.equal(frame.time, frame.duration, `${type}: drop waits for the actual timeline completion`);
         near(frame.cardMatrix, end.cardMatrix, `${type}: falling shell never moves card`);
         near(frame.cameraMatrix, reveal[0].cameraMatrix, `${type}: camera remains stationary`);
-        assert.ok(Math.abs(frame.lidAngle + Math.PI / 4) < 1e-7);
+        assert.ok(Math.abs(frame.lidAngle + 110 * Math.PI / 180) < 1e-7);
         assert.ok(Math.abs(frame.ballCenter[0] - falling[0].ballCenter[0]) < 1e-7, 'Vertical fall');
     }
     assert.equal(end.phase, 'presented');
     assert.equal(end.running, false);
+    assert.equal(end.presentationProgress, 1);
+    assert.ok(Math.abs((end.cardBounds.max[1] - end.cardBounds.min[1]) / 2 - 0.55) < 0.001);
     assert.ok(end.ballBounds.max[1] < -1, `${type}: entire open shell below frame`);
     assert.equal(end.duration, (type === 'fire' ? 5.35 : 3.5) + extension);
     const entering = samples.find(s => s.phase === 'throw');
@@ -92,7 +97,7 @@ async function run(page, type, extension = 0) {
         assert.ok(Math.abs(rotationTrace(frame.ballMatrix) - 3) < 1e-7, 'Shell faces front at rest');
         assert.equal(frame.lidAngle, 0, 'Lid stays closed until the spin has stopped');
     }
-    return { type, duration: end.duration, phases: [...new Set(samples.map(s => s.phase))] };
+    return { type, mode: end.presentationMode, duration: end.duration, phases: [...new Set(samples.map(s => s.phase))] };
 }
 
 try {
@@ -101,31 +106,62 @@ try {
         const page = await context.newPage(); await isolate(page);
         page.on('pageerror', error => report.errors.push(error.message));
         let requests = 0;
+        let releaseCardRequest;
         await page.route('https://api.tcgdex.net/**', async route => {
             requests++;
-            const name = new URL(route.request().url()).searchParams.get('name') || 'Eevee';
+            const url = new URL(route.request().url());
+            const name = url.searchParams.get('name') || decodeURIComponent(url.pathname.split('/').at(-1));
             if (name === 'missing') return route.fulfill({ json: [] });
             if (name === 'error') return route.abort();
-            const card = { id: name, name, image: '/textures/eevee-preview.webp', dexId: [133], types: ['Colorless'] };
+            if (name === 'delayed' && new URL(route.request().url()).searchParams.has('name')) {
+                await new Promise(resolve => { releaseCardRequest = resolve; });
+            }
+            const card = { id: name, name, image: name === 'bad-image' ? '/textures/missing-card.webp' : '/textures/eevee-preview.webp', dexId: [133], types: ['Colorless'] };
             return route.fulfill({ json: new URL(route.request().url()).searchParams.has('name') ? [card] : card });
         });
         await page.goto(base); await ready(page);
         const form = await page.locator('#pokemon-search').boundingBox();
         const idle = await snapshot(page);
         assert.equal(idle.idle, true);
+        assert.equal(idle.ballVisible, false);
+        assert.equal(idle.cardVisible, false);
+        const panel = await page.locator('#summon-panel').boundingBox();
+        assert.ok(Math.abs(panel.x + panel.width / 2 - width / 2) < 1);
+        assert.ok(Math.abs(panel.y + panel.height / 2 - height / 2) < 1);
+        await page.screenshot({ path: path.join(out, `${width}-search.png`) });
+        for (const name of ['', '   ']) {
+            await page.locator('#pokemon-name').fill(name);
+            await page.locator('button[type=submit]').click();
+            assert.equal(requests, 0, 'Empty names do not fetch');
+            assert.equal(await page.locator('#pokemon-search').isVisible(), true);
+        }
         await page.evaluate(() => window.__pokemonReveal.setCardImage('/textures/eevee-preview.webp'));
         const results = [];
         // All types at normal speed exercise real callbacks and smoke streaming.
-        for (const type of selectedTypes) {
-            results.push(await run(page, type));
-            console.log(`PASS ${width} ${type}`);
+        for (const mode of modes) {
+            await page.evaluate(mode => window.__pokemonReveal.setPresentationMode(mode), mode);
+            for (const type of selectedTypes) {
+                results.push(await run(page, type));
+                console.log(`PASS ${width} ${mode} ${type}`);
+            }
         }
         results.push(await run(page, 'normal', 0.6));
         assert.deepEqual(await page.locator('#pokemon-search').boundingBox(), form, 'Search form never moves');
+        await page.evaluate(() => window.__pokemonReveal.showIdle({ ballVisible: false }));
+        await page.evaluate(() => window.__pokemonReveal.setPresentationMode('after'));
 
         // The actual form locks both button and programmatic/Enter submission.
-        await page.locator('#pokemon-name').fill('Eevee');
-        await page.locator('button[type=submit]').click();
+        await page.locator('#pokemon-name').fill('delayed');
+        await page.locator('#pokemon-name').press('Enter');
+        await page.waitForFunction(() => document.querySelector('#pokemon-search').hidden);
+        assert.equal(await page.locator('#summon-status').isVisible(), true);
+        assert.equal((await snapshot(page)).ballVisible, false, 'No ball while fetching');
+        await page.screenshot({ path: path.join(out, `${width}-loading.png`) });
+        const loadingRequests = requests;
+        await page.evaluate(() => document.querySelector('#pokemon-search').requestSubmit());
+        assert.equal(requests, loadingRequests, 'Loading blocks repeat submits');
+        assert.ok(releaseCardRequest, 'Delayed API request intercepted');
+        releaseCardRequest();
         await page.waitForFunction(() => window.__pokemonReveal.debug.snapshot().phase === 'throw');
         const before = requests;
         await page.evaluate(() => document.querySelector('#pokemon-search').requestSubmit());
@@ -137,8 +173,19 @@ try {
                 return s.phase === phase && (phase === 'reveal' ? s.time > 1.8 : s.motionTime > (phase === 'opening' ? 1.2 : 0.25));
             }, phase);
             await page.screenshot({ path: path.join(out, `${width}-${phase}.png`) });
+            assert.equal(await page.locator('#pokemon-search').isVisible(), false);
         }
-        await page.waitForFunction(() => !document.querySelector('button[type=submit]').disabled);
+        await page.locator('#search-again').waitFor({ state: 'visible' });
+        assert.equal((await snapshot(page)).cardVisible, true);
+        // GUI replay reuses the prepared texture, and a selection changed mid-flight applies next time.
+        const replayRequests = requests;
+        await page.locator('.lil-gui select').first().selectOption({ label: 'During reveal' });
+        await page.getByRole('button', { name: 'Replay', exact: true }).click();
+        await page.waitForFunction(() => window.__pokemonReveal.debug.snapshot().phase === 'throw');
+        await page.locator('.lil-gui select').first().selectOption({ label: 'After reveal' });
+        assert.equal((await snapshot(page)).presentationMode, 'during');
+        await page.locator('#search-again').waitFor({ state: 'visible' });
+        assert.equal(requests, replayRequests, 'Replay makes no card API requests');
 
         // Pause/resume in flight and resize in the reveal/drop lifecycle.
         await page.evaluate(() => { window.result = undefined; window.__pokemonReveal.play('normal').then(r => { window.result = r; }); });
@@ -160,15 +207,30 @@ try {
         await page.waitForFunction(() => window.result === 'completed');
         assert.ok((await snapshot(page)).ballBounds.max[1] < -1);
 
-        // Failed searches preserve the already displayed card and offscreen shell.
-        const stable = await snapshot(page);
-        for (const name of ['missing', 'error']) {
+        // Repeat search clears the presentation; failures return to the same editable name.
+        await page.locator('#search-again').click();
+        assert.equal(await page.locator('#pokemon-name').inputValue(), '');
+        assert.equal(await page.locator('#pokemon-name').evaluate(el => el === document.activeElement), true);
+        assert.equal((await snapshot(page)).ballVisible, false);
+        assert.equal((await snapshot(page)).cardVisible, false);
+        for (const name of ['missing', 'error', 'bad-image']) {
             await page.locator('#pokemon-name').fill(name);
             await page.locator('button[type=submit]').click();
             await page.waitForFunction(() => !document.querySelector('button[type=submit]').disabled);
-            near((await snapshot(page)).cardMatrix, stable.cardMatrix, 'Failed fetch preserves card');
-            assert.equal((await snapshot(page)).phase, 'presented');
+            assert.equal((await snapshot(page)).phase, 'idle');
+            assert.equal((await snapshot(page)).ballVisible, false);
+            assert.equal((await snapshot(page)).cardVisible, false);
+            assert.equal(await page.locator('#pokemon-name').inputValue(), name);
+            assert.ok(await page.locator('#summon-status').textContent());
         }
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.locator('#pokemon-name').fill('Eevee');
+        await page.locator('button[type=submit]').click();
+        await page.locator('#search-again').waitFor({ state: 'visible' });
+        assert.equal((await snapshot(page)).phase, 'presented');
+        assert.equal((await snapshot(page)).cardVisible, true);
+        await page.locator('#search-again').click();
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
         const cancelled = await page.evaluate(async () => {
             const api = window.__pokemonReveal;
             const first = api.play('ice'), second = api.play('normal');
@@ -191,7 +253,7 @@ try {
         await context.close();
     }
     assert.deepEqual(report.errors, []);
-    console.log(`PASS choreography: ${selectedTypes.length} types across ${report.profiles.length} profiles; extended reveal, form lock, resize, visibility, cancellation and reduced motion`);
+    console.log(`PASS choreography: ${selectedTypes.length} types, ${modes.join('/')} across ${report.profiles.length} profiles; extended reveal, GUI replay, form lock, resize, visibility, cancellation and reduced motion`);
 } catch (error) {
     report.assertions.push(error.stack); throw error;
 } finally {

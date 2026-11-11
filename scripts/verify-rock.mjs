@@ -132,7 +132,8 @@ try {
             });
             await writeFile(path.join(out,`${profile}-motion.webm`),Buffer.from(video));
         }
-        const finish = await state(page); assert.equal(finish.cardScale,0.94); assert.ok(finish.rock.finished);
+        await seek(page,3.5);
+        const finish = await state(page); assert.equal(finish.cardScale,1.18); assert.ok(finish.rock.finished);
         const stoneState = () => page.evaluate(() => {
             const result={boulders:0,rubble:0,chips:0,bedY:[]};
             window.__pokemonReveal.debug.model.getObjectByName('RockEffect').traverse(o=>{

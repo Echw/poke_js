@@ -68,7 +68,7 @@ try {
             for(const time of [0.25,0.65,1.25,1.85,2.45,3.15,3.5]) {
                 await seek(page,time);
                 await page.screenshot({path:path.join(out,`${profile}-${side?'side':'front'}-${time}.png`)});
-                if(time===3.5)assert.equal((await state(page)).cardScale,0.94);
+                if(time===3.5)assert.equal((await state(page)).cardScale,1.18);
             }
         }
         await page.evaluate(()=>window.__pokemonReveal.debug.sideView(false));

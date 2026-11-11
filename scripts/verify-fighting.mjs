@@ -145,7 +145,7 @@ try {
             if (process.argv.includes('--motion')) for (const rate of [1, 0.2]) await record(page, name, side, rate);
         }
         await page.evaluate(() => window.__pokemonReveal.debug.sideView(false));
-        await seek(page, 3.5); assert.equal((await state(page)).fighting.live, 0); assert.equal((await state(page)).cardScale, 0.94);
+        await seek(page, 3.5); assert.equal((await state(page)).fighting.live, 0); assert.equal((await state(page)).cardScale, 1.18);
         for (const effect of ['ice', 'water', 'fire', 'electric', 'grass', 'psychic', 'fighting']) {
             await page.evaluate(effect => window.__pokemonReveal.play(effect), effect); await seek(page, 2.4);
             assert.equal((await state(page)).effect.toLowerCase().includes(effect), true);

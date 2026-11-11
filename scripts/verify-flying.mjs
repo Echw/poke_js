@@ -163,7 +163,8 @@ try {
         await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
         await page.waitForFunction(()=>window.__pokemonReveal.debug.snapshot().running);
         await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.__pokemonReveal.play('flying'));
-        const end=await state(page);assert.equal(end.time,3.5);assert.equal(end.flying.visibleDraws,0);assert.equal(end.cardScale,0.94);
+        const end=await state(page);assert.equal(end.time,3.5);assert.equal(end.flying.visibleDraws,0);
+        assert.ok(Math.abs((end.cardBounds.max[1]-end.cardBounds.min[1])/2-0.55)<0.001);
         await page.emulateMedia({reducedMotion:'no-preference'});
         for(const [name,effect] of [['Charizard','FireEffect'],['Pidgeotto','FlyingEffect'],['Abra','PsychicEffect']]){
             await page.locator('#pokemon-name').fill(name);await page.locator('button').click();

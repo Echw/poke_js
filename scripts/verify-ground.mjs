@@ -185,7 +185,7 @@ try {
             for(const time of [0.3,0.7,1.2,1.8,2.1,2.4,2.7,3.05,3.5]) {await seek(page,time);await page.screenshot({path:path.join(out,`${profile}-${side?'side':'front'}-${time}.png`)});}
             if(process.argv.includes('--motion'))for(const rate of [1,0.2])await record(page,profile,side,rate);
         }
-        await seek(page,3.5); assert.equal((await state(page)).ground.live,0);assert.equal((await state(page)).cardScale,0.94);
+        await seek(page,3.5); assert.equal((await state(page)).ground.live,0);assert.equal((await state(page)).cardScale,1.18);
         assert.ok((await poses(page)).pillars.every(p=>!p.visible));
         const crumbs=await page.evaluate(()=>Array.from({length:6},(_,i)=>{
             const m=window.__pokemonReveal.debug.model.getObjectByName(`GroundRubble${i}`),matrix=m.matrix.clone();

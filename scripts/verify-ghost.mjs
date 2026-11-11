@@ -130,7 +130,7 @@ try {
             await page.screenshot({ path: path.join(out,`${profile}-${label}.png`), scale: 'css' });
         }
         const final = await state(page), residual = await fog(page);
-        assert.equal(final.cardScale,0.94);
+        assert.equal(final.cardScale,1.18);
         assert.equal(await page.evaluate(()=>window.__pokemonReveal.debug.model.getObjectByName('GhostLightRibbons').material.uniforms.uOpacity.value),0,'Light ribbons finish fading by the final frame');
         assert.ok(residual.energy < peak.energy * 0.20,'Final residue stays faint');
         const memory = final.memory;

@@ -194,7 +194,7 @@ try {
             }
         }
         const end = await geometry(page), endState = await state(page);
-        assert.equal(end.visible, false); assert.equal(endState.running, false); assert.equal(endState.cardScale, 0.94);
+        assert.equal(end.visible, false); assert.equal(endState.running, false); assert.equal(endState.cardScale, 1.18);
         assert.ok(end.live <= 9 && end.live > 0, 'Only a few basin flakes remain');
         assert.deepEqual(end.lighting, {rim:0,accent:0,visible:[false,false,false]}, 'Lighting fades out completely');
         await seek(page, 2.85);

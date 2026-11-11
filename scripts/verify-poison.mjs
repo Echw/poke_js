@@ -194,7 +194,7 @@ try {
         await seek(page,1.17); const before = (await state(page)).poison;
         await seek(page,0.2); await seek(page,1.17); assert.deepEqual((await state(page)).poison,before);
         await seek(page,3.5); assert.equal((await state(page)).poison.liveBubbles,0); assert.equal((await state(page)).poison.liveDrops,0);
-        assert.equal((await state(page)).cardScale,0.94);
+        assert.equal((await state(page)).cardScale,1.18);
         for (const effect of ['water','ice','fighting','grass','electric','fire','psychic','poison']) {
             await page.evaluate(effect => window.__pokemonReveal.play(effect),effect); await seek(page,1.17);
             assert.equal((await state(page)).effect.toLowerCase().includes(effect),true);

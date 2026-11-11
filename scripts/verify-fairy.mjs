@@ -90,7 +90,7 @@ try {
             stages.push(await state(page));
         }
         assert.equal(stages[2].effect, 'FairyEffect');
-        assert.equal(stages[6].cardScale, 0.94); assert.equal(stages[6].running, false);
+        assert.equal(stages[6].cardScale, 1.18); assert.equal(stages[6].running, false);
         const fit = await page.evaluate(() => {
             const r = document.querySelector('#pokemon-search').getBoundingClientRect();
             return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight

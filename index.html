@@ -20,20 +20,23 @@
   </section>
   <main id="app">
     <canvas id="canvas"></canvas>
-    <form id="pokemon-search" class="summon-form" role="search" inert aria-busy="true">
-      <label class="visually-hidden" for="pokemon-name">Pokémon name</label>
-      <input
-        id="pokemon-name"
-        class="summon-form__input"
-        name="pokemon"
-        type="search"
-        placeholder="Search Pokémon"
-        spellcheck="false"
-        required
-      />
-      <button class="summon-form__button" type="submit" disabled><span>Summon</span></button>
+    <div id="summon-panel" class="summon-panel">
+      <form id="pokemon-search" class="summon-form" role="search" inert aria-busy="true">
+        <label class="visually-hidden" for="pokemon-name">Pokémon name</label>
+        <input
+          id="pokemon-name"
+          class="summon-form__input"
+          name="pokemon"
+          type="search"
+          placeholder="Search Pokémon"
+          spellcheck="false"
+          required
+        />
+        <button class="summon-form__button" type="submit" disabled><span>Summon</span></button>
+      </form>
       <output id="summon-status" class="summon-form__status" aria-live="polite">Preparing reveal…</output>
-    </form>
+    </div>
+    <button id="search-again" class="summon-form__button search-again" type="button" hidden><span>Search again</span></button>
   </main>
   <script type="module" src="/src/main.ts"></script>
 </body>
